@@ -3,6 +3,8 @@ export type Settings = {
   maxImageBytes: number;
   geminiApiKey?: string;
   geminiModel: string;
+  /** Үндсэн model ачаалалтай үед дарааллаар нь оролдох model-ууд. */
+  geminiFallbackModels: string[];
 };
 
 type Env = Record<string, string | undefined>;
@@ -20,5 +22,6 @@ export function loadSettings(env: Env = process.env): Settings {
     maxImageBytes: Number(env.MAX_IMAGE_BYTES?.trim() || 10 * 1024 * 1024),
     geminiApiKey: env.GEMINI_API_KEY?.trim() || undefined,
     geminiModel: env.GEMINI_MODEL?.trim() || 'gemini-3.5-flash',
+    geminiFallbackModels: list(env.GEMINI_FALLBACK_MODELS, 'gemini-3.5-flash-lite,gemini-2.5-flash'),
   };
 }
