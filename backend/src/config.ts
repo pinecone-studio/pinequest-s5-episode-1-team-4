@@ -5,6 +5,9 @@ export type Settings = {
   geminiModel: string;
   /** Үндсэн model ачаалалтай үед дарааллаар нь оролдох model-ууд. */
   geminiFallbackModels: string[];
+  chimegeToken?: string;
+  chimegeVoiceId: string;
+  chimegeSpeed: number;
 };
 
 type Env = Record<string, string | undefined>;
@@ -23,5 +26,8 @@ export function loadSettings(env: Env = process.env): Settings {
     geminiApiKey: env.GEMINI_API_KEY?.trim() || undefined,
     geminiModel: env.GEMINI_MODEL?.trim() || 'gemini-3.5-flash',
     geminiFallbackModels: list(env.GEMINI_FALLBACK_MODELS, 'gemini-3.5-flash-lite,gemini-2.5-flash'),
+    chimegeToken: env.CHIMEGE_TOKEN?.trim() || undefined,
+    chimegeVoiceId: env.CHIMEGE_VOICE_ID?.trim() || 'FEMALE3v2',
+    chimegeSpeed: Number(env.CHIMEGE_SPEED?.trim() || 1),
   };
 }

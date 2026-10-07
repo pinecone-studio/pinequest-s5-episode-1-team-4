@@ -6,11 +6,16 @@ import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import type { Settings } from './config';
 import { analyzeRoutes } from './routes/analyze';
 import type { ErrorResponse, HealthResponse } from './schemas';
+import { ChimegeSynthesizer, type SpeechSynthesizer } from './speech';
 import { GeminiSceneAnalyzer, SceneAnalysisError, type SceneAnalyzer } from './vision';
 
-type AppOptions = { settings: Settings; analyzer?: SceneAnalyzer };
+type AppOptions = { settings: Settings; analyzer?: SceneAnalyzer; speech?: SpeechSynthesizer };
 
-export function createApp({ settings, analyzer = new GeminiSceneAnalyzer(settings) }: AppOptions) {
+export function createApp({
+  settings,
+  analyzer = new GeminiSceneAnalyzer(settings),
+  speech = new ChimegeSynthesizer(settings),
+}: AppOptions) {
   const app = new Hono();
   app.use(logger());
   app.use(
@@ -21,7 +26,7 @@ export function createApp({ settings, analyzer = new GeminiSceneAnalyzer(setting
   );
 
   app.get('/health', (c) => c.json<HealthResponse>({ status: 'ok' }));
-  app.route('/api/v1', analyzeRoutes(settings, analyzer));
+  app.route('/api/v1', analyzeRoutes(settings, analyzer, speech));
 
   // AI-ийн алдааг Монгол мессежтэй нь, бусдыг ерөнхий мессежээр буцаана.
   app.onError((error, c) => {

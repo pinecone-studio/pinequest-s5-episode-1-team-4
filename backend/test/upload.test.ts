@@ -45,6 +45,8 @@ describe('loadSettings', () => {
       maxImageBytes: 10 * 1024 * 1024,
       geminiModel: 'gemini-3.5-flash',
       geminiFallbackModels: ['gemini-3.5-flash-lite', 'gemini-2.5-flash'],
+      chimegeVoiceId: 'FEMALE3v2',
+      chimegeSpeed: 1,
     });
   });
 
