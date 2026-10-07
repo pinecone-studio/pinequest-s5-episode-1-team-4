@@ -3,6 +3,15 @@ import { File, Paths } from 'expo-file-system';
 import * as Speech from 'expo-speech';
 import { Platform } from 'react-native';
 
+// Чимэгэ-ээр урьдчилан бичсэн тогтмол мессежүүд — интернэтгүй ч Монголоор сонсогдоно.
+const PHRASES = {
+  'walk-on': require('../../assets/audio/walk-on.wav'),
+  'walk-off': require('../../assets/audio/walk-off.wav'),
+  'walk-error': require('../../assets/audio/walk-error.wav'),
+} as const;
+
+export type Phrase = keyof typeof PHRASES;
+
 // finish event ирэхгүй тохиолдолд тоглуулалт дууссанд тооцох хугацаа.
 const MAX_PLAYBACK_MS = 30_000;
 const DEVICE_RATE = Platform.select({ ios: 0.48, default: 0.9 });
@@ -95,4 +104,8 @@ export async function playAudio(source: AudioSource): Promise<void> {
   await ensureAudioMode();
   // Тогтмол мессеж тоглохгүй байсан ч үндсэн ажлыг зогсоохгүй.
   await play(source).catch(() => undefined);
+}
+
+export function playPhrase(phrase: Phrase): Promise<void> {
+  return playAudio(PHRASES[phrase]);
 }
