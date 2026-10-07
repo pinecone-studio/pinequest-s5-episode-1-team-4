@@ -1,0 +1,19 @@
+.DS_Store
+
+# Нууц түлхүүр — хэзээ ч commit хийхгүй (.env.example-д зөвхөн жишээ утга)
+.env
+.env.local
+.env*.local
+
+node_modules/
+
+# Backend: татаж авдаг model, ажлын явцад үүсэх cache, туршилтын кадр
+backend/models/*.onnx
+backend/.cache/
+
+# Mobile: Expo-гийн автоматаар үүсгэдэг хавтсууд
+mobile/.expo/
+mobile/dist/
+mobile/ios/
+mobile/android/
+mobile/expo-env.d.ts
