@@ -15,3 +15,26 @@ export async function shrinkImage(input: Image, maxSide: number, quality: number
     return input;
   }
 }
+
+// Явах зам ихэвчлэн кадрын доод, голын хэсэгт харагдана.
+const PATH = { left: 0.15, top: 0.45, width: 0.7 };
+
+/**
+ * Алхах горимд: бүтэн кадр + явах замын томруулсан зураг. Тоосго, мод зэрэг жижиг
+ * саад бүтэн кадрыг жижигрүүлэхэд хэдхэн пиксел болдог.
+ */
+export async function walkingViews(input: Image, maxSide: number): Promise<{ full: Image; path?: Image }> {
+  try {
+    const { data, info } = await sharp(input.image).rotate().toBuffer({ resolveWithObject: true });
+    const top = Math.round(info.height * PATH.top);
+    const region = { left: Math.round(info.width * PATH.left), top, width: Math.round(info.width * PATH.width), height: info.height - top };
+    const pathImage = new Uint8Array(await sharp(data).extract(region).toBuffer());
+    const [full, path] = await Promise.all([
+      shrinkImage({ ...input, image: data }, maxSide, 70),
+      shrinkImage({ ...input, image: pathImage }, maxSide, 70),
+    ]);
+    return { full, path };
+  } catch {
+    return { full: input };
+  }
+}
