@@ -31,7 +31,11 @@ async function runCycle(session: WalkSession, captureFrame: FrameSource) {
 const errorText = (cause: unknown) =>
   cause instanceof Error ? cause.message : cause ? 'Алдаа гарлаа.' : '';
 
-/** Алхах горим: хэдэн секунд тутам кадр авч, шинэ саад илэрвэл дуугаар хэлнэ. */
+/**
+ * Алхах горим, хоёр давхарга:
+ * - YOLO+OWL (1.2 сек тутам): хүн, машин, хаалга гарч ирвэл шууд хэлнэ.
+ * - Gemini (дүрс өөрчлөгдөх эсвэл 6 сек тутам): шат, тоосго зэргийг тайлбарлана.
+ */
 export function useWalkingMode(captureFrame: FrameSource) {
   const [active, setActive] = useState(false);
   const [lastDescription, setLastDescription] = useState('');
@@ -56,7 +60,7 @@ export function useWalkingMode(captureFrame: FrameSource) {
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     await playPhrase('walk-on');
 
-    const session = new WalkSession({ onSpoken: setLastDescription });
+    const session = new WalkSession({ onSpoken: setLastDescription, isCurrent });
     let failures = 0;
     while (isCurrent()) {
       const started = Date.now();
