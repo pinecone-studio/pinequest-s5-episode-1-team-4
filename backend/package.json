@@ -7,7 +7,8 @@
     "dev": "tsx watch src/server.ts",
     "start": "tsx src/server.ts",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "download-model": "./scripts/download-model.sh"
   },
   "engines": {
     "node": ">=22"
@@ -16,6 +17,7 @@
     "@google/genai": "^2.27.0",
     "@hono/node-server": "^2.1.3",
     "hono": "^4.13.13",
+    "onnxruntime-node": "^1.30.0",
     "sharp": "^0.35.5"
   },
   "devDependencies": {
