@@ -1,5 +1,6 @@
 import type { Hazard } from './api';
 import { PRIORITY } from './prioritySpeaker';
+import { proximityLevel } from './proximity';
 
 // Хоёр кадрын ижил нэртэй, төв нь үүнээс ойр зүйлийг нэг зүйл гэж үзнэ. Хаалганы төв
 // 0.34–0.39 хооронд хэлбэлзэж "урд"/"зүүн талд" ээлжлэн хэлэгдэж байсан.
@@ -7,7 +8,7 @@ const SAME_OBJECT_DX = 0.2;
 // Үүнээс бага итгэлцэлтэйг дараалсан 2 кадрт гарсан үед л хэлнэ — гэрийн орчинд нэг
 // кадрын худал илрүүлэлт олон байсан.
 const CONFIDENT_SCORE = 0.7;
-// Ижил зүйлийг энэ хугацаанд давтан хэлэхгүй.
+// Ижил зүйлийг энэ хугацаанд давтан хэлэхгүй — харин дараагийн зайн шатанд ойртвол хэлнэ.
 const ALERT_REPEAT_MS = 10_000;
 
 export const VEHICLES = new Set(['машин', 'автобус', 'ачааны машин', 'мотоцикл', 'галт тэрэг', 'дугуй']);
@@ -31,7 +32,10 @@ export class AlertFilter {
     const confirmed =
       hazard.score >= CONFIDENT_SCORE || this.previousFrame.some((seen) => sameObject(seen, hazard));
     const repeated =
-      this.last !== null && sameObject(this.last, hazard) && now - this.lastAt <= ALERT_REPEAT_MS;
+      this.last !== null &&
+      sameObject(this.last, hazard) &&
+      proximityLevel(hazard) >= proximityLevel(this.last) &&
+      now - this.lastAt <= ALERT_REPEAT_MS;
     return confirmed && !repeated;
   }
 
