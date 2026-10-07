@@ -3,19 +3,36 @@ import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 
+import { AlertAudioCache } from './alertAudio';
 import type { Settings } from './config';
+import { HazardDetector, type ObjectDetector } from './detector';
+import { detectRoutes } from './routes/detect';
 import { analyzeRoutes } from './routes/analyze';
 import { readRoutes } from './routes/read';
 import type { ErrorResponse, HealthResponse } from './schemas';
 import { ChimegeSynthesizer, type SpeechSynthesizer } from './speech';
 import { GeminiSceneAnalyzer, SceneAnalysisError, type SceneAnalyzer } from './vision';
+import { YoloxModel } from './yoloModel';
 
-type AppOptions = { settings: Settings; analyzer?: SceneAnalyzer; speech?: SpeechSynthesizer };
+type AppOptions = {
+  settings: Settings;
+  analyzer?: SceneAnalyzer;
+  speech?: SpeechSynthesizer;
+  detector?: ObjectDetector;
+  alertAudio?: AlertAudioCache;
+};
+
+function defaultDetector() {
+  const yolo = new YoloxModel();
+  return new HazardDetector([yolo], yolo.available);
+}
 
 export function createApp({
   settings,
   analyzer = new GeminiSceneAnalyzer(settings),
   speech = new ChimegeSynthesizer(settings),
+  detector = defaultDetector(),
+  alertAudio = new AlertAudioCache(speech, `${settings.chimegeVoiceId}:${settings.chimegeSpeed}`),
 }: AppOptions) {
   const app = new Hono();
   app.use(logger());
@@ -29,6 +46,7 @@ export function createApp({
   app.get('/health', (c) => c.json<HealthResponse>({ status: 'ok' }));
   app.route('/api/v1', analyzeRoutes(settings, analyzer, speech));
   app.route('/api/v1', readRoutes(settings, analyzer, speech));
+  app.route('/api/v1', detectRoutes(settings, detector, alertAudio));
 
   // AI-ийн алдааг Монгол мессежтэй нь, бусдыг ерөнхий мессежээр буцаана.
   app.onError((error, c) => {
@@ -39,5 +57,5 @@ export function createApp({
     return c.json<ErrorResponse>({ detail: 'Серверт алдаа гарлаа. Дахин оролдоно уу.' }, 500);
   });
 
-  return app;
+  return Object.assign(app, { alertAudio });
 }

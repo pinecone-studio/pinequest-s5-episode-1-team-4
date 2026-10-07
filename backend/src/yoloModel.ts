@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 
 import ort from 'onnxruntime-node';
@@ -33,6 +34,10 @@ export class YoloxModel {
   private session: Promise<ort.InferenceSession> | null = null;
 
   constructor(readonly modelPath = DEFAULT_MODEL_PATH) {}
+
+  get available() {
+    return existsSync(this.modelPath);
+  }
 
   async detectObjects(image: Uint8Array): Promise<Detection[]> {
     this.session ??= ort.InferenceSession.create(this.modelPath);
