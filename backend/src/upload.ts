@@ -38,6 +38,14 @@ export function limitUploadSize(maxBytes: number) {
   });
 }
 
+/** Зураг зөв ирсэн үед л handler-ийг дуудна; үгүй бол алдааны хариу буцаана. */
+export function withUpload(maxBytes: number, handler: (c: Context, upload: Upload) => Promise<Response>) {
+  return async (c: Context) => {
+    const upload = await readUpload(c, maxBytes);
+    return upload instanceof Response ? upload : handler(c, upload);
+  };
+}
+
 /** Multipart-аас "image" талбарыг уншиж шалгана; алдаатай бол бэлэн хариу буцаана. */
 export async function readUpload(c: Context, maxBytes: number): Promise<Upload | Response> {
   const fields = await c.req.parseBody();
