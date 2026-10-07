@@ -40,11 +40,15 @@ describe('readUpload', () => {
 
 describe('loadSettings', () => {
   it('uses safe defaults', () => {
-    expect(loadSettings({})).toEqual({ allowedOrigins: ['*'], maxImageBytes: 10 * 1024 * 1024 });
+    expect(loadSettings({})).toEqual({
+      allowedOrigins: ['*'],
+      maxImageBytes: 10 * 1024 * 1024,
+      geminiModel: 'gemini-3.5-flash',
+    });
   });
 
   it('reads comma-separated origins', () => {
     const settings = loadSettings({ ALLOWED_ORIGINS: 'https://a.mn, https://b.mn', MAX_IMAGE_BYTES: '2048' });
-    expect(settings).toEqual({ allowedOrigins: ['https://a.mn', 'https://b.mn'], maxImageBytes: 2048 });
+    expect(settings).toMatchObject({ allowedOrigins: ['https://a.mn', 'https://b.mn'], maxImageBytes: 2048 });
   });
 });
