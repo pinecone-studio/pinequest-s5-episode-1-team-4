@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { GeminiSceneAnalyzer, SCENE_INSTRUCTIONS, SceneAnalysisError, thinkingConfigFor } from '../src/vision';
 
 const IMAGE = new TextEncoder().encode('image-bytes');
-const SETTINGS = { geminiApiKey: 'test-key', geminiModel: 'gemini-test', geminiFallbackModels: [] };
+const SETTINGS = { geminiApiKey: 'test-key', geminiModel: 'gemini-test', geminiFallbackModels: [], geminiWalkModel: 'w', geminiWalkAlternates: [] };
 
 // Жинхэнэ Gemini-г дуудахгүй — CI-д түлхүүр хэрэггүй.
 function fakeGemini(reply: { text?: string }) {

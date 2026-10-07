@@ -2,14 +2,14 @@ import { describe, expect, it } from 'vitest';
 
 import { createApp } from '../src/app';
 import { loadSettings } from '../src/config';
-import { GeminiSceneAnalyzer, READ_INSTRUCTIONS, type AnalysisMode } from '../src/vision';
+import { GeminiSceneAnalyzer, READ_INSTRUCTIONS, type AnalysisRequest } from '../src/vision';
 
 describe('POST /api/v1/read', () => {
   it('reads the text aloud in read mode', async () => {
-    const modes: (AnalysisMode | undefined)[] = [];
+    const modes: (string | undefined)[] = [];
     const analyzer = {
-      analyze: async (_image: Uint8Array, _type: string, mode?: AnalysisMode) => {
-        modes.push(mode);
+      analyze: async (_image: Uint8Array, _type: string, request?: AnalysisRequest) => {
+        modes.push(request?.mode);
         return 'Парацетамол 500 мг.';
       },
     };
@@ -31,9 +31,9 @@ describe('read mode prompt', () => {
   it('sends the read instructions with a larger answer budget', async () => {
     const calls: any[] = [];
     const client = { models: { generateContent: async (p: unknown) => (calls.push(p), { text: 'Бичиг.' }) } };
-    const settings = { geminiApiKey: 'k', geminiModel: 'm', geminiFallbackModels: [] };
+    const settings = { geminiApiKey: 'k', geminiModel: 'm', geminiFallbackModels: [], geminiWalkModel: 'w', geminiWalkAlternates: [] };
 
-    await new GeminiSceneAnalyzer(settings, () => client as any).analyze(new Uint8Array([1]), 'image/jpeg', 'read');
+    await new GeminiSceneAnalyzer(settings, () => client as any).analyze(new Uint8Array([1]), 'image/jpeg', { mode: 'read' });
 
     expect(calls[0].config.systemInstruction).toBe(READ_INSTRUCTIONS);
     expect(calls[0].config.maxOutputTokens).toBe(4096);

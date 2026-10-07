@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { GeminiSceneAnalyzer, SceneAnalysisError } from '../src/vision';
 
 const IMAGE = new TextEncoder().encode('image-bytes');
-const SETTINGS = { geminiApiKey: 'k', geminiModel: 'main', geminiFallbackModels: ['backup'] };
+const SETTINGS = { geminiApiKey: 'k', geminiModel: 'main', geminiFallbackModels: ['backup'], geminiWalkModel: 'w', geminiWalkAlternates: [] };
 const overloaded = (status: number) => new ApiError({ message: 'busy', status });
 
 /** `replies` нь model бүрийн хариу: Error бол шиднэ, текст бол буцаана. */

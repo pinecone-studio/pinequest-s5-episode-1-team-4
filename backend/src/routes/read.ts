@@ -18,7 +18,7 @@ export function readRoutes(settings: Settings, analyzer: SceneAnalyzer, speech: 
     limitUploadSize(settings.maxImageBytes),
     withUpload(settings.maxImageBytes, async (c, upload) => {
       const { image, mediaType } = await shrinkImage(upload, MAX_SIDE, JPEG_QUALITY);
-      const text = await analyzer.analyze(image, mediaType, 'read');
+      const text = await analyzer.analyze(image, mediaType, { mode: 'read' });
       return c.json<AnalysisResponse>({ description: text, audio_base64: await speechBase64(speech, text) });
     }),
   );
