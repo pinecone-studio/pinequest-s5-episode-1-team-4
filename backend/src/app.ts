@@ -5,6 +5,7 @@ import type { ContentfulStatusCode } from 'hono/utils/http-status';
 
 import type { Settings } from './config';
 import { analyzeRoutes } from './routes/analyze';
+import { readRoutes } from './routes/read';
 import type { ErrorResponse, HealthResponse } from './schemas';
 import { ChimegeSynthesizer, type SpeechSynthesizer } from './speech';
 import { GeminiSceneAnalyzer, SceneAnalysisError, type SceneAnalyzer } from './vision';
@@ -27,6 +28,7 @@ export function createApp({
 
   app.get('/health', (c) => c.json<HealthResponse>({ status: 'ok' }));
   app.route('/api/v1', analyzeRoutes(settings, analyzer, speech));
+  app.route('/api/v1', readRoutes(settings, analyzer, speech));
 
   // AI-ийн алдааг Монгол мессежтэй нь, бусдыг ерөнхий мессежээр буцаана.
   app.onError((error, c) => {

@@ -26,9 +26,42 @@ Rules:
 
 export const USER_PROMPT = 'Энэ орчны хамгийн хэрэгтэй мэдээллийг тайлбарла.';
 
-// Gemini-ийн хязгаарт "бодох" token ч тооцогддог тул хэдэн өгүүлбэрээс илүү өгнө.
-const MAX_OUTPUT_TOKENS = 1024;
-const TIMEOUT_MS = 15_000;
+export const READ_INSTRUCTIONS = `
+You are the reading component of VisionMate, an assistive app for blind and
+low-vision users. The user pointed the camera at text (a document, sign, label,
+package, screen, or medicine box) and wants it read aloud.
+
+Your answer is spoken by a Mongolian text-to-speech engine that can only read
+Mongolian Cyrillic, so:
+- Mongolian text: copy it exactly, in natural reading order.
+- Only when most of the text is in another language: translate it into
+  Mongolian and start with the language, e.g. "Англи хэл дээрх бичиг:". A few
+  Latin-letter brand names inside Mongolian text do not count.
+- Write brand names, abbreviations and other Latin-letter words in Cyrillic as
+  they are pronounced, e.g. Paracetamol → Парацетамол.
+- Keep numbers, dates, prices, phone numbers and dosages exact, written as digits.
+
+Rules:
+- Output plain text only: no headings, markdown, bullet symbols or emoji.
+- Packages and medicine: start with the product name, then dosage, expiry date
+  and warnings if visible.
+- Long documents: read the title and the main text; skip page numbers, barcodes
+  and repeated headers.
+- Never guess unreadable text. If part is cut off or blurry, say so briefly at
+  the end, e.g. "Доод хэсэг нь бүдэг байна."
+- If there is no readable text, reply exactly:
+  "Унших бичиг олдсонгүй. Камераа бичиг рүү ойртуулна уу."
+`.trim();
+
+export const READ_PROMPT = 'Энэ зураг дээрх бичгийг уншиж өг.';
+
+export type AnalysisMode = 'scene' | 'read';
+
+// Gemini-ийн хязгаарт "бодох" token ч тооцогддог; уншлагад урт текст гарна.
+const PROMPTS: Record<AnalysisMode, { instructions: string; userPrompt: string; maxTokens: number; timeoutMs: number }> = {
+  scene: { instructions: SCENE_INSTRUCTIONS, userPrompt: USER_PROMPT, maxTokens: 1024, timeoutMs: 15_000 },
+  read: { instructions: READ_INSTRUCTIONS, userPrompt: READ_PROMPT, maxTokens: 4096, timeoutMs: 20_000 },
+};
 
 /** Хэрэглэгчид Монголоор хэлэх алдаа, HTTP статустай нь. */
 export class SceneAnalysisError extends Error {
@@ -41,7 +74,7 @@ export class SceneAnalysisError extends Error {
 }
 
 export interface SceneAnalyzer {
-  analyze(image: Uint8Array, mediaType: string): Promise<string>;
+  analyze(image: Uint8Array, mediaType: string, mode?: AnalysisMode): Promise<string>;
 }
 
 /**
@@ -94,16 +127,17 @@ export class GeminiSceneAnalyzer implements SceneAnalyzer {
     private readonly now: () => number = Date.now,
   ) {}
 
-  async analyze(image: Uint8Array, mediaType: string): Promise<string> {
+  async analyze(image: Uint8Array, mediaType: string, mode: AnalysisMode = 'scene'): Promise<string> {
     const client = this.client();
+    const prompt = PROMPTS[mode];
     const contents = [
       { inlineData: { data: Buffer.from(image).toString('base64'), mimeType: mediaType } },
-      USER_PROMPT,
+      prompt.userPrompt,
     ];
     let lastError: unknown;
     for (const model of this.modelsToTry()) {
       try {
-        return await this.generate(client, model, contents);
+        return await this.generate(client, model, contents, prompt);
       } catch (error) {
         lastError = error;
         if (!this.shouldTryNext(model, error)) break;
@@ -126,16 +160,21 @@ export class GeminiSceneAnalyzer implements SceneAnalyzer {
     return ready.length > 0 ? ready : chain;
   }
 
-  private async generate(client: Pick<GoogleGenAI, 'models'>, model: string, contents: Contents) {
+  private async generate(
+    client: Pick<GoogleGenAI, 'models'>,
+    model: string,
+    contents: Contents,
+    { instructions, maxTokens, timeoutMs }: (typeof PROMPTS)[AnalysisMode],
+  ) {
     const response = await client.models.generateContent({
       model,
       contents,
       config: {
-        systemInstruction: SCENE_INSTRUCTIONS,
-        maxOutputTokens: MAX_OUTPUT_TOKENS,
+        systemInstruction: instructions,
+        maxOutputTokens: maxTokens,
         thinkingConfig: thinkingConfigFor(model),
         // Ачаалалтай model хэдэн арван секунд хүлээлгэдэг тул хязгаарлана.
-        httpOptions: { timeout: TIMEOUT_MS },
+        httpOptions: { timeout: timeoutMs },
       },
     });
     return requireDescription(response.text);
