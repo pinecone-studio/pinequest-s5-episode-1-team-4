@@ -106,3 +106,39 @@ export function byImportance(a: Hazard, b: Hazard) {
 export function toHazards(detections: Detection[]): Hazard[] {
   return mergeDuplicates(detections).filter(isRelevant).map(toHazard).sort(byImportance);
 }
+
+const DIRECTION_WORDS: Record<Direction, string> = { left: 'зүүн талд', ahead: 'урд', right: 'баруун талд' };
+// Нэг өгүүлбэрт нэг зүйл: ойлгомжтой, дуу нь cache-ээс шууд гарна.
+const MAX_ALERT_ITEMS = 1;
+// Тээврийн хэрэгсэл, хүн, дугуй, том амьтан, хаалга — дууг нь урьдчилан бэлдэнэ.
+const PREWARM_MIN_PRIORITY = 8;
+
+function phrase(hazard: Hazard) {
+  return `${DIRECTION_WORDS[hazard.direction]} ${hazard.close ? 'ойрхон ' : ''}${hazard.name}`;
+}
+
+/** "Урд ойрхон хүн байна." — загвар өгүүлбэр, AI шаардахгүй. Зөвхөн замд байгаа зүйлс. */
+export function describeHazards(hazards: Hazard[], maxItems = MAX_ALERT_ITEMS): string | null {
+  const parts = [...new Set(hazards.filter((hazard) => hazard.inPath).map(phrase))].slice(0, maxItems);
+  if (parts.length === 0) return null;
+  const sentence = `${parts.join(', ')} байна.`;
+  return sentence.charAt(0).toUpperCase() + sentence.slice(1);
+}
+
+function variants(rule: Rule): [Direction, boolean][] {
+  const base: [Direction, boolean][] = [['ahead', false], ['ahead', true], ['left', true], ['right', true]];
+  // Тээврийн хэрэгслийг хажууд хол байсан ч хэлдэг.
+  return rule.priority >= VEHICLE_PRIORITY ? [...base, ['left', false], ['right', false]] : base;
+}
+
+/** Хамгийн чухал, олон давтагддаг сэрэмжлүүлгүүд — дууг нь backend асахад бэлдэнэ. */
+export function commonAlerts(): string[] {
+  const alerts = Object.entries(HAZARDS)
+    .filter(([label, rule]) => rule.priority >= PREWARM_MIN_PRIORITY || label === 'door')
+    .flatMap(([label, rule]) =>
+      variants(rule).map(([direction, close]) =>
+        describeHazards([{ label, score: 1, box: [0, 0, 1, 1], ...rule, direction, close, inPath: true }]),
+      ),
+    );
+  return [...new Set(alerts.filter((alert) => alert !== null))];
+}
