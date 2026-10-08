@@ -9,6 +9,15 @@ export type AnalysisResponse = {
   audio_base64: string | null;
 };
 
+export type DetectResponse = {
+  /** Хамгийн чухал зүйлийн Монгол өгүүлбэр, эсвэл null. */
+  alert: string | null;
+  audio_base64: string | null;
+  /** Зөвхөн урд замд байгаа зүйлс, чухлаас нь. */
+  hazards: { name: string; direction: 'left' | 'ahead' | 'right'; close: boolean; score: number; x: number }[];
+  inference_ms: number;
+};
+
 export type ErrorResponse = {
   detail: string;
 };
