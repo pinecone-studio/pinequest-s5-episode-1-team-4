@@ -26,6 +26,49 @@ Rules:
 
 export const USER_PROMPT = 'Энэ орчны хамгийн хэрэгтэй мэдээллийг тайлбарла.';
 
+/** Алхах горимд шинэ зүйл алга бол model яг энэ тэмдгийг буцаана. */
+export const NO_CHANGE = '-';
+
+export const WALK_INSTRUCTIONS = `
+You are the walking-mode component of VisionMate, an assistive app for blind and
+low-vision users. The user is walking and the phone camera points forward. You
+receive one frame every few seconds.
+
+Answer in natural Mongolian with at most ONE short sentence (about 10 words)
+about the single most important thing for walking right now, in this order:
+1. anything on the ground in the path that could trip the user, even small:
+   bricks, stones, sticks, wood, branches, cables, boxes, bags, bottles;
+   also steps, stairs, curbs, holes, and open manholes;
+2. vehicles, bicycles, or people directly ahead;
+3. doors, entrances, crossings, or the path turning.
+
+Another fast system already announces people, vehicles, animals, doors and
+furniture (chairs, tables, sofas, beds). Never mention any of those — it gives
+their direction more reliably. Your job is only what that system cannot see:
+steps, stairs (especially stairs going down), curbs, holes, open manholes, and
+small things on the ground that could trip the user. Ignore objects
+on tables, shelves or walls, and paper or small clutter that will not trip
+anyone. Use simple, everyday Mongolian words.
+
+You may receive a second image: a close-up of the walking path cut from the
+lower center of the same photo. Check it carefully for small objects on the
+ground — they are easy to miss in the full frame.
+
+The user hears your answer a few seconds after the photo was taken, so things at
+the far left or right edge are usually already behind them. Focus on the walking
+path straight ahead (center and lower center of the frame) that the user will
+reach soon. Mention something at the side only if it is a door or entrance.
+
+Rules:
+- Use only "урд", "зүүн талд", "баруун талд" for direction, decided from the
+  first (full) image: its left half is the user's left. If unsure, say "урд".
+- Never give distances and never say the path is safe, clear, or free.
+- Do not describe colors, weather, or decorative details.
+- If nothing important is visible, or the previous message already covers what
+  matters and nothing important changed, reply with exactly: ${NO_CHANGE}
+- If the image is too dark or blurry to judge, reply with exactly: ${NO_CHANGE}
+`.trim();
+
 export const READ_INSTRUCTIONS = `
 You are the reading component of VisionMate, an assistive app for blind and
 low-vision users. The user pointed the camera at text (a document, sign, label,
@@ -55,13 +98,38 @@ Rules:
 
 export const READ_PROMPT = 'Энэ зураг дээрх бичгийг уншиж өг.';
 
-export type AnalysisMode = 'scene' | 'read';
+const PATH_CLOSE_UP_LABEL = 'Ижил зургийн явах замын хэсгийг томруулсан:';
 
-// Gemini-ийн хязгаарт "бодох" token ч тооцогддог; уншлагад урт текст гарна.
-const PROMPTS: Record<AnalysisMode, { instructions: string; userPrompt: string; maxTokens: number; timeoutMs: number }> = {
-  scene: { instructions: SCENE_INSTRUCTIONS, userPrompt: USER_PROMPT, maxTokens: 1024, timeoutMs: 15_000 },
-  read: { instructions: READ_INSTRUCTIONS, userPrompt: READ_PROMPT, maxTokens: 4096, timeoutMs: 20_000 },
+export type AnalysisMode = 'scene' | 'read' | 'walk';
+
+export type AnalysisRequest = {
+  mode: AnalysisMode;
+  /** Алхах горимд өмнө нь хэлсэн тайлбар — давтахгүйн тулд. */
+  previous?: string;
+  /** Алхах горимд явах замын томруулсан хэсэг (JPEG). */
+  pathCloseUp?: Uint8Array;
 };
+
+const walkPrompt = ({ previous }: AnalysisRequest) =>
+  previous?.trim()
+    ? `Өмнөх мессеж: "${previous.trim()}". Одоо хамгийн чухал зүйл юу вэ?`
+    : 'Одоо хамгийн чухал зүйл юу вэ?';
+
+// Gemini-ийн хязгаарт "бодох" token ч тооцогддог; уншлагад урт текст гарна. Алхахад
+// хоцорсон хариу хэрэггүй ч Gemini 10 сек-ээс богино хугацаа хүлээн авдаггүй.
+const PROMPTS: Record<AnalysisMode, Prompt> = {
+  scene: { instructions: SCENE_INSTRUCTIONS, userPrompt: () => USER_PROMPT, maxTokens: 1024, timeoutMs: 15_000 },
+  read: { instructions: READ_INSTRUCTIONS, userPrompt: () => READ_PROMPT, maxTokens: 4096, timeoutMs: 20_000 },
+  walk: { instructions: WALK_INSTRUCTIONS, userPrompt: walkPrompt, maxTokens: 1024, timeoutMs: 10_000 },
+};
+type Prompt = {
+  instructions: string;
+  userPrompt: (request: AnalysisRequest) => string;
+  maxTokens: number;
+  timeoutMs: number;
+};
+
+const inline = (data: Uint8Array, mimeType: string) => ({ inlineData: { data: Buffer.from(data).toString('base64'), mimeType } });
 
 /** Хэрэглэгчид Монголоор хэлэх алдаа, HTTP статустай нь. */
 export class SceneAnalysisError extends Error {
@@ -74,7 +142,7 @@ export class SceneAnalysisError extends Error {
 }
 
 export interface SceneAnalyzer {
-  analyze(image: Uint8Array, mediaType: string, mode?: AnalysisMode): Promise<string>;
+  analyze(image: Uint8Array, mediaType: string, request?: AnalysisRequest): Promise<string>;
 }
 
 /**
@@ -120,22 +188,24 @@ type Contents = Parameters<GoogleGenAI['models']['generateContent']>[0]['content
 
 export class GeminiSceneAnalyzer implements SceneAnalyzer {
   private readonly rateLimitedUntil = new Map<string, number>();
+  private walkTurn = 0;
 
   constructor(
-    private readonly settings: Pick<Settings, 'geminiApiKey' | 'geminiModel' | 'geminiFallbackModels'>,
+    private readonly settings: Pick<
+      Settings,
+      'geminiApiKey' | 'geminiModel' | 'geminiFallbackModels' | 'geminiWalkModel' | 'geminiWalkAlternates'
+    >,
     private readonly createClient: GeminiClientFactory = (apiKey) => new GoogleGenAI({ apiKey }),
     private readonly now: () => number = Date.now,
   ) {}
 
-  async analyze(image: Uint8Array, mediaType: string, mode: AnalysisMode = 'scene'): Promise<string> {
+  async analyze(image: Uint8Array, mediaType: string, request: AnalysisRequest = { mode: 'scene' }): Promise<string> {
     const client = this.client();
-    const prompt = PROMPTS[mode];
-    const contents = [
-      { inlineData: { data: Buffer.from(image).toString('base64'), mimeType: mediaType } },
-      prompt.userPrompt,
-    ];
+    const prompt = PROMPTS[request.mode];
+    const closeUp = request.pathCloseUp ? [PATH_CLOSE_UP_LABEL, inline(request.pathCloseUp, 'image/jpeg')] : [];
+    const contents = [inline(image, mediaType), ...closeUp, prompt.userPrompt(request)];
     let lastError: unknown;
-    for (const model of this.modelsToTry()) {
+    for (const model of this.modelsToTry(request.mode)) {
       try {
         return await this.generate(client, model, contents, prompt);
       } catch (error) {
@@ -153,8 +223,12 @@ export class GeminiSceneAnalyzer implements SceneAnalyzer {
   }
 
   /** Үндсэн model, дараа нь нөөц model-ууд — хязгаарт орсныг алгасна. */
-  private modelsToTry(): string[] {
-    const chain = [...new Set([this.settings.geminiModel, ...this.settings.geminiFallbackModels])];
+  private modelsToTry(mode: AnalysisMode): string[] {
+    const { geminiModel, geminiFallbackModels, geminiWalkModel, geminiWalkAlternates } = this.settings;
+    // Алхахад хурд чухал тул хөнгөн model-уудыг ээлжилнэ — үнэгүй хязгаар нь model тус бүрд тусдаа.
+    const walkModels = [geminiWalkModel, ...geminiWalkAlternates];
+    const walkFirst = mode === 'walk' ? [walkModels[this.walkTurn++ % walkModels.length], ...walkModels] : [];
+    const chain = [...new Set([...walkFirst, geminiModel, ...geminiFallbackModels])];
     const ready = chain.filter((model) => (this.rateLimitedUntil.get(model) ?? 0) <= this.now());
     // Бүгд хязгаарт орсон бол аль нэг нь шинэчлэгдсэн байж магадгүй.
     return ready.length > 0 ? ready : chain;
@@ -164,7 +238,7 @@ export class GeminiSceneAnalyzer implements SceneAnalyzer {
     client: Pick<GoogleGenAI, 'models'>,
     model: string,
     contents: Contents,
-    { instructions, maxTokens, timeoutMs }: (typeof PROMPTS)[AnalysisMode],
+    { instructions, maxTokens, timeoutMs }: Prompt,
   ) {
     const response = await client.models.generateContent({
       model,

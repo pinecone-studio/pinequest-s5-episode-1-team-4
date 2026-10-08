@@ -5,6 +5,9 @@ export type Settings = {
   geminiModel: string;
   /** Үндсэн model ачаалалтай үед дарааллаар нь оролдох model-ууд. */
   geminiFallbackModels: string[];
+  geminiWalkModel: string;
+  /** Алхах горимд ээлжлэх model-ууд — хязгаар нь model тус бүрд тусдаа. */
+  geminiWalkAlternates: string[];
   chimegeToken?: string;
   chimegeVoiceId: string;
   chimegeSpeed: number;
@@ -26,6 +29,8 @@ export function loadSettings(env: Env = process.env): Settings {
     geminiApiKey: env.GEMINI_API_KEY?.trim() || undefined,
     geminiModel: env.GEMINI_MODEL?.trim() || 'gemini-3.5-flash',
     geminiFallbackModels: list(env.GEMINI_FALLBACK_MODELS, 'gemini-3.5-flash-lite,gemini-2.5-flash'),
+    geminiWalkModel: env.GEMINI_WALK_MODEL?.trim() || 'gemini-3.5-flash-lite',
+    geminiWalkAlternates: list(env.GEMINI_WALK_ALTERNATES, 'gemini-3.5-flash'),
     chimegeToken: env.CHIMEGE_TOKEN?.trim() || undefined,
     chimegeVoiceId: env.CHIMEGE_VOICE_ID?.trim() || 'FEMALE3v2',
     chimegeSpeed: Number(env.CHIMEGE_SPEED?.trim() || 1),
