@@ -1,4 +1,4 @@
-import { GoogleGenAI, ThinkingLevel, type ThinkingConfig } from '@google/genai';
+import { ApiError, GoogleGenAI, ThinkingLevel, type ThinkingConfig } from '@google/genai';
 
 import type { Settings } from './config';
 
@@ -58,31 +58,93 @@ function requireDescription(text: string | undefined): string {
   return description;
 }
 
+/** "timeout", "429", "503" гэх мэт — алдааны төрлийг нэг түлхүүрээр. */
+function errorKind(error: unknown): string {
+  const timedOut = error instanceof Error && error.name === 'AbortError';
+  return timedOut ? 'timeout' : error instanceof ApiError ? String(error.status) : 'other';
+}
+
+// Үнэгүй түвшинд ачаалал (503), хязгаар (429), удаашрал түгээмэл бөгөөд хязгаар нь
+// model тус бүрд тусдаа тул эдгээр үед дараагийн model-ийг оролдоно.
+const RETRYABLE = new Set(['timeout', '429', '503']);
+// 429 өгсөн model-ийг дахин асуух нь хүсэлт бүрт хугацаа алдана.
+const RATE_LIMIT_COOLDOWN_MS = 60_000;
+
+const KNOWN_ERRORS: Record<string, string> = {
+  timeout: 'AI үйлчилгээ хэт удаан хариулж байна. Дахин оролдоно уу.',
+  '429': 'Үнэгүй хязгаар түр дууссан байна. Хэсэг хүлээгээд дахин оролдоно уу.',
+  '503': 'AI үйлчилгээ түр ачаалалтай байна. Дахин оролдоно уу.',
+};
+
+function toAnalysisError(error: unknown): unknown {
+  const known = KNOWN_ERRORS[errorKind(error)];
+  if (known) return new SceneAnalysisError(503, known);
+  return error instanceof ApiError ? new SceneAnalysisError(502, 'Зургийг одоогоор шинжилж чадсангүй.') : error;
+}
+
 type GeminiClientFactory = (apiKey: string) => Pick<GoogleGenAI, 'models'>;
+type Contents = Parameters<GoogleGenAI['models']['generateContent']>[0]['contents'];
 
 export class GeminiSceneAnalyzer implements SceneAnalyzer {
+  private readonly rateLimitedUntil = new Map<string, number>();
+
   constructor(
-    private readonly settings: Pick<Settings, 'geminiApiKey' | 'geminiModel'>,
+    private readonly settings: Pick<Settings, 'geminiApiKey' | 'geminiModel' | 'geminiFallbackModels'>,
     private readonly createClient: GeminiClientFactory = (apiKey) => new GoogleGenAI({ apiKey }),
+    private readonly now: () => number = Date.now,
   ) {}
 
   async analyze(image: Uint8Array, mediaType: string): Promise<string> {
-    const { geminiApiKey, geminiModel } = this.settings;
+    const client = this.client();
+    const contents = [
+      { inlineData: { data: Buffer.from(image).toString('base64'), mimeType: mediaType } },
+      USER_PROMPT,
+    ];
+    let lastError: unknown;
+    for (const model of this.modelsToTry()) {
+      try {
+        return await this.generate(client, model, contents);
+      } catch (error) {
+        lastError = error;
+        if (!this.shouldTryNext(model, error)) break;
+      }
+    }
+    throw toAnalysisError(lastError);
+  }
+
+  private client() {
+    const { geminiApiKey } = this.settings;
     if (!geminiApiKey) throw new SceneAnalysisError(503, 'GEMINI_API_KEY тохируулаагүй байна.');
-    const response = await this.createClient(geminiApiKey).models.generateContent({
-      model: geminiModel,
-      contents: [
-        { inlineData: { data: Buffer.from(image).toString('base64'), mimeType: mediaType } },
-        USER_PROMPT,
-      ],
+    return this.createClient(geminiApiKey);
+  }
+
+  /** Үндсэн model, дараа нь нөөц model-ууд — хязгаарт орсныг алгасна. */
+  private modelsToTry(): string[] {
+    const chain = [...new Set([this.settings.geminiModel, ...this.settings.geminiFallbackModels])];
+    const ready = chain.filter((model) => (this.rateLimitedUntil.get(model) ?? 0) <= this.now());
+    // Бүгд хязгаарт орсон бол аль нэг нь шинэчлэгдсэн байж магадгүй.
+    return ready.length > 0 ? ready : chain;
+  }
+
+  private async generate(client: Pick<GoogleGenAI, 'models'>, model: string, contents: Contents) {
+    const response = await client.models.generateContent({
+      model,
+      contents,
       config: {
         systemInstruction: SCENE_INSTRUCTIONS,
         maxOutputTokens: MAX_OUTPUT_TOKENS,
-        thinkingConfig: thinkingConfigFor(geminiModel),
+        thinkingConfig: thinkingConfigFor(model),
         // Ачаалалтай model хэдэн арван секунд хүлээлгэдэг тул хязгаарлана.
         httpOptions: { timeout: TIMEOUT_MS },
       },
     });
     return requireDescription(response.text);
+  }
+
+  private shouldTryNext(model: string, error: unknown): boolean {
+    const kind = errorKind(error);
+    if (kind === '429') this.rateLimitedUntil.set(model, this.now() + RATE_LIMIT_COOLDOWN_MS);
+    console.warn(`Gemini ${model}: ${kind}`);
+    return RETRYABLE.has(kind);
   }
 }
