@@ -8,7 +8,8 @@ import { SceneAnalysisError, type SceneAnalyzer } from '../src/vision';
 function post(analyzer: SceneAnalyzer, file: File) {
   const form = new FormData();
   form.append('image', file);
-  return createApp({ settings: loadSettings({}), analyzer }).request('/api/v1/analyze', {
+  const speech = { synthesize: async () => new TextEncoder().encode('RIFF-wav') };
+  return createApp({ settings: loadSettings({}), analyzer, speech }).request('/api/v1/analyze', {
     method: 'POST',
     body: form,
   });
@@ -32,7 +33,7 @@ describe('POST /api/v1/analyze', () => {
 
     const response = await post(analyzer, await photo(3000));
 
-    expect(await response.json()).toEqual({ description: 'Урд хаалга байна.', audio_base64: null });
+    expect(await response.json()).toEqual({ description: 'Урд хаалга байна.', audio_base64: 'UklGRi13YXY=' });
     expect(received).toEqual({ size: 1536, mediaType: 'image/jpeg' });
   });
 
