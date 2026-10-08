@@ -10,7 +10,11 @@
     "ios": {
       "bundleIdentifier": "mn.visionmate.app",
       "supportsTablet": true,
-      "infoPlist": { "CFBundleAllowMixedLocalizations": true }
+      "infoPlist": {
+        "CFBundleAllowMixedLocalizations": true,
+        "NSLocalNetworkUsageDescription": "VisionMate толгой дээрх камераас зураг авахын тулд ижил сүлжээнд холбогдоно.",
+        "NSAppTransportSecurity": { "NSAllowsLocalNetworking": true }
+      }
     },
     "android": {
       "adaptiveIcon": {
