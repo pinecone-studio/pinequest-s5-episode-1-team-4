@@ -10,6 +10,11 @@ export type SceneAnalysis = {
 type AnalysisPayload = { description: string | null; audio_base64?: string | null };
 
 const SCENE_TIMEOUT_MS = 35_000;
+// Урт баримт уншиж, дуу болгоход удаан.
+const READ_TIMEOUT_MS = 60_000;
+const WALK_TIMEOUT_MS = 15_000;
+// YOLO ~0.1 сек; үүнээс удаавал сэрэмжлүүлэг хоцорч, хэрэгцээгүй болно.
+const DETECT_TIMEOUT_MS = 5_000;
 const DEV_BACKEND_PORT = 8000;
 
 const NETWORK_ERRORS = [
@@ -86,6 +91,44 @@ export async function requireAnalysis(result: Promise<SceneAnalysis | null>) {
 /** "Орчноо таних": зургийн 1–4 өгүүлбэр тайлбар. */
 export function analyzeScene(imageUri: string): Promise<SceneAnalysis> {
   return requireAnalysis(describeImage('/api/v1/analyze', imageUri, SCENE_TIMEOUT_MS));
+}
+
+/** "Энийг унш": зураг дээрх бичгийг Монголоор уншиж өгнө. */
+export function readText(imageUri: string): Promise<SceneAnalysis> {
+  return requireAnalysis(describeImage('/api/v1/read', imageUri, READ_TIMEOUT_MS));
+}
+
+/**
+ * Алхах горимын Gemini тайлбар. Шинэ, чухал зүйл илрээгүй бол null. `previous` нь
+ * өмнө хэлсэн тайлбар — model түүнийг давтахгүй.
+ */
+export function describeWhileWalking(imageUri: string, previous?: string) {
+  return describeImage('/api/v1/walk', imageUri, WALK_TIMEOUT_MS, previous ? { previous } : {});
+}
+
+export type Hazard = {
+  name: string;
+  direction: 'left' | 'ahead' | 'right';
+  close: boolean;
+  score: number;
+  /** Зургийн өргөнд харьцуулсан төв (0–1) — нэг зүйлийг кадраас кадрт таних. */
+  x: number;
+};
+
+export type Detection = {
+  /** "Урд ойрхон хүн байна." гэх мэт, эсвэл null. */
+  alert: string | null;
+  audioBase64: string | null;
+  /** Урд замд байгаа зүйлс, чухлаас нь. */
+  hazards: Hazard[];
+};
+
+type DetectPayload = { alert: string | null; audio_base64: string | null; hazards: Hazard[] };
+
+/** Шууд илрүүлэлт (YOLO+OWL ~0.2 сек): хүн, машин, хаалга зэрэг. */
+export async function detectObjects(imageUri: string): Promise<Detection> {
+  const payload = await postForm<DetectPayload>('/api/v1/detect', imageForm(imageUri), DETECT_TIMEOUT_MS);
+  return { alert: payload.alert, audioBase64: payload.audio_base64, hazards: payload.hazards };
 }
 
 /** Илгээсэн зургийг cache-ээс устгана — зураг хуримтлагдахгүй, нууцлал хадгалагдана. */
