@@ -17,3 +17,6 @@ mobile/dist/
 mobile/ios/
 mobile/android/
 mobile/expo-env.d.ts
+
+# ESP32-CAM: Wi-Fi-ийн нууц үг
+hardware/**/secrets.h
