@@ -9,6 +9,12 @@ export type AnalysisResponse = {
   audio_base64: string | null;
 };
 
+export type WalkResponse = {
+  /** Шинэ, чухал зүйл байвал нэг богино өгүүлбэр; үгүй бол null — апп чимээгүй байна. */
+  description: string | null;
+  audio_base64: string | null;
+};
+
 export type DetectResponse = {
   /** Хамгийн чухал зүйлийн Монгол өгүүлбэр, эсвэл null. */
   alert: string | null;

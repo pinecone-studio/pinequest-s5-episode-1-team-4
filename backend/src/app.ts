@@ -10,6 +10,7 @@ import { OwlVitDetector } from './openVocab';
 import { detectRoutes } from './routes/detect';
 import { analyzeRoutes } from './routes/analyze';
 import { readRoutes } from './routes/read';
+import { walkRoutes } from './routes/walk';
 import type { ErrorResponse, HealthResponse } from './schemas';
 import { ChimegeSynthesizer, type SpeechSynthesizer } from './speech';
 import { GeminiSceneAnalyzer, SceneAnalysisError, type SceneAnalyzer } from './vision';
@@ -48,6 +49,7 @@ export function createApp({
   app.get('/health', (c) => c.json<HealthResponse>({ status: 'ok' }));
   app.route('/api/v1', analyzeRoutes(settings, analyzer, speech));
   app.route('/api/v1', readRoutes(settings, analyzer, speech));
+  app.route('/api/v1', walkRoutes(settings, analyzer, speech));
   app.route('/api/v1', detectRoutes(settings, detector, alertAudio));
 
   // AI-ийн алдааг Монгол мессежтэй нь, бусдыг ерөнхий мессежээр буцаана.
