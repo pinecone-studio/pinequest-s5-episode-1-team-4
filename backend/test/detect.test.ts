@@ -40,3 +40,20 @@ describe('POST /api/v1/detect', () => {
     expect(((await response.json()) as { detail: string }).detail).toContain('download-model');
   });
 });
+
+describe('HazardDetector', () => {
+  it('merges YOLO and OWL-ViT results and drops duplicates', async () => {
+    const yolo = {
+      detectObjects: async () => [
+        { label: 'person', score: 0.9, box: [0.4, 0.2, 0.6, 0.6] as Box },
+        { label: 'person', score: 0.6, box: [0.41, 0.21, 0.61, 0.61] as Box },
+      ],
+    };
+    const owl = { detectObjects: async () => [{ label: 'door', score: 0.55, box: [0.7, 0.1, 0.95, 0.6] as Box }] };
+
+    const result = await new HazardDetector([yolo, owl]).detect(new Uint8Array());
+
+    expect(result.hazards.map((h) => h.label)).toEqual(['person', 'door']);
+    expect(result.alert).toBe('Урд хүн байна.');
+  });
+});

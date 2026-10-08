@@ -6,6 +6,7 @@ import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { AlertAudioCache } from './alertAudio';
 import type { Settings } from './config';
 import { HazardDetector, type ObjectDetector } from './detector';
+import { OwlVitDetector } from './openVocab';
 import { detectRoutes } from './routes/detect';
 import { analyzeRoutes } from './routes/analyze';
 import { readRoutes } from './routes/read';
@@ -22,9 +23,10 @@ type AppOptions = {
   alertAudio?: AlertAudioCache;
 };
 
+/** YOLO (хүн, машин, тавилга) ба OWL-ViT (хаалга) зэрэг — хугацаа нь удаан нэгнийхтэй тэнцүү. */
 function defaultDetector() {
   const yolo = new YoloxModel();
-  return new HazardDetector([yolo], yolo.available);
+  return new HazardDetector([yolo, new OwlVitDetector()], yolo.available);
 }
 
 export function createApp({
