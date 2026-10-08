@@ -5,9 +5,13 @@
  *   http://visionmate-cam.local/capture           JPEG кадр (640x480) — алхах горим
  *   http://visionmate-cam.local/capture?size=hi   тод кадр (1600x1200) — бичиг унших
  *   http://visionmate-cam.local/health            {"status":"ok"}
+ *   http://visionmate-cam.local/                  шалгах хуудас (кадруудыг тасралтгүй харуулна)
  *
  * Wi-Fi-ийн нэр, нууц үгийг secrets.h-д бичнэ (secrets.h.example-ийг хуулж).
+ * Анх USB-ээр суулгасны дараа шинэчлэлийг Wi-Fi-аар (OTA) хийнэ:
+ *   arduino-cli upload -p visionmate-cam.local ...
  */
+#include <ArduinoOTA.h>
 #include <ESPmDNS.h>
 #include <WiFi.h>
 
@@ -18,6 +22,15 @@
 static const int FLASH_LED_PIN = 4;
 static const char *HOSTNAME = "visionmate-cam";
 static const int STALE_FRAMES = 2;  // хэмжээ солиход буферт үлдсэн хуучин кадрууд
+
+static const char INDEX_HTML[] =
+    "<!doctype html><meta name=viewport content='width=device-width'>"
+    "<title>VisionMate Cam</title><body style='margin:0;background:#000'>"
+    "<img id=f style='width:100%'><script>"
+    "const f=document.getElementById('f');"
+    "const next=()=>{f.src='/capture?t='+Date.now()};"
+    "f.onload=f.onerror=()=>setTimeout(next,150);next();"
+    "</script>";
 
 /** AI Thinker ESP32-CAM-ын камерын хөлүүд. */
 static camera_config_t cameraConfig() {
@@ -87,6 +100,11 @@ static esp_err_t captureHandler(httpd_req_t *req) {
   return result;
 }
 
+static esp_err_t indexHandler(httpd_req_t *req) {
+  httpd_resp_set_type(req, "text/html");
+  return httpd_resp_send(req, INDEX_HTML, HTTPD_RESP_USE_STRLEN);
+}
+
 static esp_err_t healthHandler(httpd_req_t *req) {
   httpd_resp_set_type(req, "application/json");
   return httpd_resp_send(req, "{\"status\":\"ok\"}", HTTPD_RESP_USE_STRLEN);
@@ -100,6 +118,7 @@ static void startServer() {
     return;
   }
   const httpd_uri_t routes[] = {
+      {"/", HTTP_GET, indexHandler, nullptr},
       {"/capture", HTTP_GET, captureHandler, nullptr},
       {"/health", HTTP_GET, healthHandler, nullptr},
   };
@@ -135,14 +154,19 @@ void setup() {
   esp_camera_sensor_get()->set_framesize(esp_camera_sensor_get(), FRAMESIZE_VGA);
 
   connectWifi();
-  // Апп камерыг IP мэдэхгүйгээр visionmate-cam.local нэрээр олно.
-  if (MDNS.begin(HOSTNAME)) MDNS.addService("http", "tcp", 80);
+  // OTA нь mDNS-ийг (visionmate-cam.local) өөрөө асаана — апп камерыг энэ нэрээр олно.
+  // Нууц үггүй бол ижил Wi-Fi-д байгаа хэн ч программыг солих боломжтой.
+  ArduinoOTA.setHostname(HOSTNAME);
+  ArduinoOTA.setPassword(OTA_PASSWORD);
+  ArduinoOTA.begin();
+  MDNS.addService("http", "tcp", 80);
   startServer();
   Serial.printf("Бэлэн: http://%s/capture  (http://%s.local)\n", WiFi.localIP().toString().c_str(), HOSTNAME);
 }
 
 void loop() {
   static uint32_t lastWifiCheck = 0;
+  ArduinoOTA.handle();
   // Hotspot түр унтарвал дахин холбогдоно.
   if (millis() - lastWifiCheck > 5000) {
     lastWifiCheck = millis();
