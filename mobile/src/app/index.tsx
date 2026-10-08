@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { CameraPreview } from '../components/CameraPreview';
 import { useWalkingMode } from '../hooks/useWalkingMode';
 import { analyzeScene, deletePhoto, readText, type SceneAnalysis } from '../lib/api';
 import { cameraFrames, captureJpeg, isCameraReachable } from '../lib/camera';
@@ -87,6 +88,9 @@ export default function HomeScreen() {
         <Pressable accessibilityRole="button" disabled={camera === 'checking'} onPress={checkCamera}>
           <Text style={[styles.status, camera === 'missing' && styles.warning]}>{CAMERA_STATUS[camera]}</Text>
         </Pressable>
+        {/* ESP32 нэг удаад нэг хүсэлт үйлчилдэг тул шинжилгээний үед зогсож, алхах горимд удаашрана —
+            сэрэмжлүүлгийн кадр хүлээхгүй. Бусад үед бараг видео. */}
+        <CameraPreview paused={busy !== null} refreshMs={walking.active ? 1_000 : 150} />
 
         {(Object.keys(TASKS) as Task[]).map((task) => (
           <BigButton
