@@ -11,7 +11,8 @@ const HAZARDS: Record<string, Rule> = {
   bus: { name: 'автобус', priority: 10 },
   truck: { name: 'ачааны машин', priority: 10 },
   motorcycle: { name: 'мотоцикл', priority: 10 },
-  train: { name: 'галт тэрэг', priority: 10 },
+  // Цонхтой хаалгыг "галт тэрэг" (56%) гэж андуурсан.
+  train: { name: 'галт тэрэг', priority: 10, minScore: 0.8 },
   bicycle: { name: 'дугуй', priority: 9 },
   person: { name: 'хүн', priority: 8 },
   dog: { name: 'нохой', priority: 8 },
@@ -36,10 +37,12 @@ const HAZARDS: Record<string, Rule> = {
   umbrella: { name: 'шүхэр', priority: 4 },
   skateboard: { name: 'скейтборд', priority: 4 },
   bottle: { name: 'лонх', priority: 3 },
-  toilet: { name: 'суултуур', priority: 3 },
-  // Саарал хаалгыг "хөргөгч" гэж андуурсан.
-  refrigerator: { name: 'хөргөгч', priority: 3, minScore: 0.7 },
-  tv: { name: 'зурагт', priority: 2 },
+  // Ойрын цагаан ханыг "суултуур" (93%), ойрын хүн, саарал хаалгыг "хөргөгч" гэж андуурсан. Урд нь
+  // ямар нэг юм байгаа нь үнэн тул буруу нэрийн оронд "саад" гэнэ.
+  toilet: { name: 'саад', priority: 3 },
+  refrigerator: { name: 'саад', priority: 3, minScore: 0.7 },
+  // Компьютерийн дэлгэц ч энэ ангилалд ордог.
+  tv: { name: 'дэлгэц', priority: 2 },
   // OWL-ViT — оноо нь YOLO-оос өөр хуваарьтай.
   door: { name: 'хаалга', priority: 6, minScore: 0.35 },
 };
