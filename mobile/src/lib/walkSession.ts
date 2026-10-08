@@ -3,6 +3,7 @@ import * as Haptics from 'expo-haptics';
 import { AlertFilter, DANGER_WORDS, hazardPriority } from './alertFilter';
 import { deletePhoto, describeWhileWalking, detectObjects, type Hazard, type SceneAnalysis } from './api';
 import { PRIORITY, PrioritySpeaker } from './prioritySpeaker';
+import { FAR, proximityLevel, pulse } from './proximity';
 import { speakDescription } from './speech';
 import type { WalkFrame } from './walkCapture';
 
@@ -16,6 +17,9 @@ const GEMINI_MAX_AGE_MS = 6_000;
 
 /** Илэрсэн зүйлсийн бүрэлдэхүүн. Чиглэлгүй — хил дээрх хэлбэлзэл Gemini-г дэмий дууддаг байсан. */
 const hazardKey = (hazards: Hazard[]) => [...new Set(hazards.map((hazard) => hazard.name))].sort().join('|');
+
+// "Ажиллаж байна" гэсэн сул чичиргээний давтамж.
+const HEARTBEAT_MS = 4_000;
 
 const FEEDBACK: Record<number, Haptics.NotificationFeedbackType> = {
   [PRIORITY.info]: Haptics.NotificationFeedbackType.Success,
@@ -34,6 +38,7 @@ export class WalkSession {
   private lastHazards = '';
   private lastGeminiAt = 0;
   private geminiRunning = false;
+  private lastHeartbeatAt = Date.now();
   /** Сүүлд хэлсэн өгүүлбэр — Gemini түүнийг давтахгүй. */
   previous?: string;
 
@@ -46,12 +51,27 @@ export class WalkSession {
     try {
       const { alert, audioBase64, hazards } = await detectObjects(frame.uri);
       const top = hazards[0];
-      if (top && alert) this.alertHazard(top, alert, () => speakDescription(alert, audioBase64), Date.now());
+      const alerted =
+        !!top && !!alert && this.alertHazard(top, alert, () => speakDescription(alert, audioBase64), Date.now());
       this.filter.seen(hazards);
+      this.feel(hazards, alerted, Date.now());
       handedOff = this.maybeDescribe(frame, hazards, takenAt);
     } finally {
       if (!handedOff) frame.release();
     }
+  }
+
+  /**
+   * Урд замын хамгийн ойрын зүйлийг кадр бүрт чичиргээгээр — яриа шиг орчны дууг дардаггүй
+   * тул хүн ихтэй газар ч тохиромжтой. Чимээгүй үед горим ажиллаж байгааг сул чичиргээгээр
+   * мэдрүүлнэ, эс бөгөөс гацсанаас ялгагдахгүй.
+   */
+  private feel(hazards: Hazard[], alerted: boolean, now: number) {
+    const nearest = Math.min(FAR, ...hazards.map(proximityLevel));
+    const quiet = !alerted && nearest === FAR && now - this.lastHeartbeatAt <= HEARTBEAT_MS;
+    if (quiet) return;
+    this.lastHeartbeatAt = now;
+    if (!alerted) void (nearest < FAR ? pulse(nearest) : Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Soft));
   }
 
   /** Дүрс өөрчлөгдсөн эсвэл 6 сек өнгөрсөн бол Gemini-г YOLO-г хүлээлгэлгүй ар талд дуудна. */
