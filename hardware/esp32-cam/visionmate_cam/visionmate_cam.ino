@@ -8,8 +8,10 @@
  *   http://visionmate-cam.local/                  шалгах хуудас (кадруудыг тасралтгүй харуулна)
  *
  * Wi-Fi-ийн нэр, нууц үгийг secrets.h-д бичнэ (secrets.h.example-ийг хуулж).
- * Анх USB-ээр суулгасны дараа шинэчлэлийг Wi-Fi-аар (OTA) хийнэ:
- *   arduino-cli upload -p visionmate-cam.local ...
+ * OTA-д хоёр app хуваалт хэрэгтэй, харин esp32cam-ын анхдагч "Huge APP"-д ганц л бий. Анх USB-ээр
+ * min_spiffs хуваалттай суулгасны дараа шинэчлэлийг Wi-Fi-аар (OTA) хийнэ:
+ *   arduino-cli compile -b esp32:esp32:esp32cam:PartitionScheme=min_spiffs ...
+ *   arduino-cli upload -b esp32:esp32:esp32cam:PartitionScheme=min_spiffs -p visionmate-cam.local ...
  */
 #include <ArduinoOTA.h>
 #include <ESPmDNS.h>
@@ -51,7 +53,8 @@ static camera_config_t cameraConfig() {
   c.pin_vsync = 25;
   c.pin_href = 23;
   c.pin_pclk = 22;
-  c.xclk_freq_hz = 20000000;
+  // 20MHz-д камер PSRAM-ыг дүүргэж (FB-OVF), Wi-Fi-ийн хариу 1+ сек болдог. Аппад 10MHz хангалттай.
+  c.xclk_freq_hz = 10000000;
   c.ledc_timer = LEDC_TIMER_0;
   c.ledc_channel = LEDC_CHANNEL_0;
   c.pixel_format = PIXFORMAT_JPEG;
@@ -112,6 +115,8 @@ static esp_err_t healthHandler(httpd_req_t *req) {
 
 static void startServer() {
   httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+  // iPhone холболтоо нээлттэй үлдээдэг — сокет дүүрвэл шинэ хүсэлт хариугүй өлгөөтэй үлдэнэ.
+  config.lru_purge_enable = true;
   httpd_handle_t server = nullptr;
   if (httpd_start(&server, &config) != ESP_OK) {
     Serial.println("HTTP сервер асаагүй.");
@@ -151,7 +156,10 @@ void setup() {
     delay(3000);
     ESP.restart();
   }
-  esp_camera_sensor_get()->set_framesize(esp_camera_sensor_get(), FRAMESIZE_VGA);
+  sensor_t *sensor = esp_camera_sensor_get();
+  sensor->set_framesize(sensor, FRAMESIZE_VGA);
+  // Модуль толин тусгал шиг зураг өгдөг — эс бөгөөс зүүн/баруун сэрэмжлүүлэг солигдоно.
+  sensor->set_hmirror(sensor, 1);
 
   connectWifi();
   // OTA нь mDNS-ийг (visionmate-cam.local) өөрөө асаана — апп камерыг энэ нэрээр олно.
