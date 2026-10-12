@@ -113,8 +113,6 @@ export function toHazards(detections: Detection[]): Hazard[] {
 const DIRECTION_WORDS: Record<Direction, string> = { left: 'зүүн талд', ahead: 'урд', right: 'баруун талд' };
 // Нэг өгүүлбэрт нэг зүйл: ойлгомжтой, дуу нь cache-ээс шууд гарна.
 const MAX_ALERT_ITEMS = 1;
-// Тээврийн хэрэгсэл, хүн, дугуй, том амьтан, хаалга — дууг нь урьдчилан бэлдэнэ.
-const PREWARM_MIN_PRIORITY = 8;
 
 function phrase(hazard: Hazard) {
   return `${DIRECTION_WORDS[hazard.direction]} ${hazard.close ? 'ойрхон ' : ''}${hazard.name}`;
@@ -134,10 +132,14 @@ function variants(rule: Rule): [Direction, boolean][] {
   return rule.priority >= VEHICLE_PRIORITY ? [...base, ['left', false], ['right', false]] : base;
 }
 
-/** Хамгийн чухал, олон давтагддаг сэрэмжлүүлгүүд — дууг нь backend асахад бэлдэнэ. */
-export function commonAlerts(): string[] {
+/**
+ * Хэлж болох бүх сэрэмжлүүлэг — дууг нь backend асахад бэлдэнэ. Cache-д байхгүй өгүүлбэрийг
+ * Чимэгэ ~0.6 сек үүсгэдэг тул анх удаа таарсан сандал ч хоцорч хэлэгддэг байсан.
+ * Чухал нь түрүүлж бэлдэгдэнэ.
+ */
+export function allAlerts(): string[] {
   const alerts = Object.entries(HAZARDS)
-    .filter(([label, rule]) => rule.priority >= PREWARM_MIN_PRIORITY || label === 'door')
+    .sort(([, a], [, b]) => b.priority - a.priority)
     .flatMap(([label, rule]) =>
       variants(rule).map(([direction, close]) =>
         describeHazards([{ label, score: 1, box: [0, 0, 1, 1], ...rule, direction, close, inPath: true }]),
