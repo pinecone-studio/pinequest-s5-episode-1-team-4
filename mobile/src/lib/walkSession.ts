@@ -53,7 +53,7 @@ export class WalkSession {
       const top = hazards[0];
       const alerted =
         !!top && !!alert && this.alertHazard(top, alert, () => speakDescription(alert, audioBase64), Date.now());
-      this.filter.seen(hazards);
+      this.filter.seen(hazards, Date.now());
       this.feel(hazards, alerted, Date.now());
       handedOff = this.maybeDescribe(frame, hazards, takenAt);
     } finally {
