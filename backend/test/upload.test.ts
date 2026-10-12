@@ -50,6 +50,7 @@ describe('loadSettings', () => {
       chimegeVoiceId: 'FEMALE3v2',
       chimegeSpeed: 1,
       detector: 'yolox',
+      walkAnalyzer: 'gemini',
     });
   });
 
