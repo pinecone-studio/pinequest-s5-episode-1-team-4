@@ -11,6 +11,8 @@ export type Settings = {
   chimegeToken?: string;
   chimegeVoiceId: string;
   chimegeSpeed: number;
+  /** COCO илрүүлэгч: yolox (2021) эсвэл rfdetr (ViT, нохой зэргийг илүү сайн олдог). */
+  detector: 'yolox' | 'rfdetr';
 };
 
 type Env = Record<string, string | undefined>;
@@ -34,5 +36,6 @@ export function loadSettings(env: Env = process.env): Settings {
     chimegeToken: env.CHIMEGE_TOKEN?.trim() || undefined,
     chimegeVoiceId: env.CHIMEGE_VOICE_ID?.trim() || 'FEMALE3v2',
     chimegeSpeed: Number(env.CHIMEGE_SPEED?.trim() || 1),
+    detector: env.DETECTOR?.trim() === 'rfdetr' ? 'rfdetr' : 'yolox',
   };
 }

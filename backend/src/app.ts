@@ -10,6 +10,7 @@ import { OwlVitDetector } from './openVocab';
 import { detectRoutes } from './routes/detect';
 import { analyzeRoutes } from './routes/analyze';
 import { readRoutes } from './routes/read';
+import { RfDetrModel } from './rfdetr';
 import { walkRoutes } from './routes/walk';
 import type { ErrorResponse, HealthResponse } from './schemas';
 import { ChimegeSynthesizer, type SpeechSynthesizer } from './speech';
@@ -24,8 +25,9 @@ type AppOptions = {
   alertAudio?: AlertAudioCache;
 };
 
-/** YOLO (хүн, машин, тавилга) ба OWL-ViT (хаалга) зэрэг — хугацаа нь удаан нэгнийхтэй тэнцүү. */
-function defaultDetector() {
+/** COCO илрүүлэгч (хүн, машин, тавилга) ба OWL-ViT (хаалга) зэрэг — хугацаа нь удаан нэгнийхтэй тэнцүү. */
+function defaultDetector(settings: Settings) {
+  if (settings.detector === 'rfdetr') return new HazardDetector([new RfDetrModel(), new OwlVitDetector()]);
   const yolo = new YoloxModel();
   return new HazardDetector([yolo, new OwlVitDetector()], yolo.available);
 }
@@ -34,7 +36,7 @@ export function createApp({
   settings,
   analyzer = new GeminiSceneAnalyzer(settings),
   speech = new ChimegeSynthesizer(settings),
-  detector = defaultDetector(),
+  detector = defaultDetector(settings),
   alertAudio = new AlertAudioCache(speech, `${settings.chimegeVoiceId}:${settings.chimegeSpeed}`),
 }: AppOptions) {
   const app = new Hono();
