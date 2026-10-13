@@ -10,6 +10,7 @@ import {
   type LatLon,
   type NavigationPlan,
   type Spoken,
+  type VoiceCommand,
 } from '../lib/navigation';
 import { setRecordingMode, speakDescription } from '../lib/speech';
 
@@ -22,9 +23,11 @@ const ARRIVED_METERS = 15;
  * Явган чиглүүлэг: товчийг дарж байгаад газраа хэлнэ → батлахыг асууна → эргэлт бүрийг хэлнэ.
  * shortcut: замаас хазайвал дахин маршрут гаргадаггүй — бодит хэрэглээнд нэмнэ.
  */
-const say = ({ text, audio }: Spoken) => speakDescription(text, audio);
-
-export function useNavigation() {
+export function useNavigation(
+  announce: (text: string, audio: string | null) => boolean,
+  onCommand: (command: VoiceCommand) => Promise<void> | void,
+) {
+  const say = useCallback(({ text, audio }: Spoken) => announce(text, audio), [announce]);
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const [pending, setPending] = useState<NavigationPlan | null>(null);
   const [active, setActive] = useState(false);
@@ -50,15 +53,18 @@ export function useNavigation() {
     setMessage('Маршрут хайж байна…');
     try {
       const plan = await requestRoute(uri, await currentPosition());
+      // "Унш", "тайлбарла", "алх" — дуусах хүртэл хүлээнэ, эс бөгөөс алхах горим дундуур нь ярина.
+      if (plan.command) return void (setMessage(''), await onCommand(plan.command));
+      if (!plan.confirm) return;
       setMessage(plan.confirm.text);
       setPending(plan.found ? plan : null);
-      await say(plan.confirm);
+      say(plan.confirm);
     } catch (error) {
       const text = error instanceof Error ? error.message : 'Алдаа гарлаа.';
       setMessage(text);
       await speakDescription(text);
     }
-  }, [recorder]);
+  }, [recorder, say, onCommand]);
 
   const stop = useCallback(() => {
     stopWatch.current?.();
@@ -77,29 +83,27 @@ export function useNavigation() {
     setPending(null);
     setActive(true);
     setMessage(plan.start.text);
-    void say(plan.start);
+    say(plan.start);
     stopWatch.current = watchPosition(plan.path, (position) => {
       const turn = maneuvers[next];
       if (turn) {
         const meters = distanceMeters(position, turn);
+        // Аюулын сэрэмжлүүлэг ярьж байвал хэлэгдэхгүй — дараагийн байршлаар дахин оролдоно.
         if (!announced && meters <= ANNOUNCE_METERS && meters > TURN_NOW_METERS * 2) {
-          announced = true;
-          void say(turn.announce);
-        } else if (meters <= TURN_NOW_METERS) {
+          announced = say(turn.announce);
+        } else if (meters <= TURN_NOW_METERS && say(turn.now)) {
           next += 1;
           announced = false;
           setMessage(turn.now.text);
           void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-          void say(turn.now);
         }
-      } else if (distanceMeters(position, destination) <= ARRIVED_METERS) {
+      } else if (distanceMeters(position, destination) <= ARRIVED_METERS && say(arrive)) {
         setMessage(arrive.text);
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        void say(arrive);
         stop();
       }
     });
-  }, [pending, stop]);
+  }, [pending, stop, say]);
 
   useEffect(() => stop, [stop]);
 
