@@ -65,7 +65,11 @@ export default function HomeScreen() {
   const running = useRef(false);
   const taps = useRef<{ count: number; timer?: ReturnType<typeof setTimeout> }>({ count: 0 });
   const { start: startWalking, suspend: suspendWalking } = walking;
-  const navigation = useNavigation();
+  const navigation = useNavigation(walking.announce, (command) => {
+    if (command === 'walk_on') return walking.start();
+    if (command === 'walk_off') return walking.stop();
+    return runTask(command);
+  });
 
   const checkCamera = () => {
     setCamera('checking');
@@ -157,7 +161,7 @@ export default function HomeScreen() {
 
           {/* Сэрэмжлүүлэг ярихгүйн тулд хэлж байх хооронд алхах горим түр зогсоно. */}
           <BigButton
-            label={navigation.active ? 'Чиглүүлэг зогсоох' : 'Хаашаа явах вэ? Дарж байгаад хэл'}
+            label={navigation.active ? 'Чиглүүлэг зогсоох' : 'Дарж байгаад хэл: унш, тайлбарла, алх, хаашаа'}
             onPress={navigation.active ? navigation.stop : undefined}
             onPressIn={navigation.active ? undefined : () => (suspendWalking(true), void navigation.startListening())}
             onPressOut={

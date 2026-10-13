@@ -2,7 +2,8 @@
  * Ярианы ач холбогдол: зөвхөн илүү чухал мессеж л хэлж буйг таслана. Өмнө нь YOLO-гийн
  * "Урд сандал" Gemini-ийн "Урд шат" сэрэмжлүүлгийг дундуур нь тасалж байсан.
  */
-export const PRIORITY = { info: 1, close: 2, danger: 3 } as const;
+// Чиглүүлэг ойрын саадыг тасалж хэлэгдэнэ, харин машин, шатны аюулыг тасалдаггүй.
+export const PRIORITY = { info: 1, close: 2, navigation: 2.5, danger: 3 } as const;
 
 export class PrioritySpeaker {
   /** Яг хэлж буй мессежийн ач холбогдол (0 = чимээгүй). */

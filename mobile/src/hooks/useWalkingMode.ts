@@ -5,7 +5,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { deletePhoto } from '../lib/api';
 import { sleep, withTimeout } from '../lib/async';
-import { keepAliveInBackground, playPhrase, stopSpeaking } from '../lib/speech';
+import { PRIORITY } from '../lib/prioritySpeaker';
+import { keepAliveInBackground, playPhrase, speakDescription, stopSpeaking } from '../lib/speech';
 import type { FrameSource } from '../lib/walkCapture';
 import { WalkSession } from '../lib/walkSession';
 
@@ -52,6 +53,7 @@ export function useWalkingMode(captureFrame: FrameSource) {
   const [frameUri, setFrameUri] = useState<string>();
   // Өсгөх бүрд ажиллаж буй давталт зогсоно.
   const runId = useRef(0);
+  const sessionRef = useRef<WalkSession | null>(null);
   // Унших, тайлбарлах үед давталт түр зогсож, дараа нь өөрөө үргэлжилнэ.
   const suspended = useRef(false);
 
@@ -76,6 +78,7 @@ export function useWalkingMode(captureFrame: FrameSource) {
     void keepAliveInBackground(true);
 
     const session = new WalkSession({ onSpoken: setLastDescription, isCurrent });
+    sessionRef.current = session;
     let shown: string | undefined;
     const show = (uri: string) => {
       if (shown) deletePhoto(shown);
@@ -116,5 +119,16 @@ export function useWalkingMode(captureFrame: FrameSource) {
 
   const suspend = useCallback((on: boolean) => void (suspended.current = on), []);
 
-  return { active, lastDescription, error, frameUri, start, stop, suspend };
+  /** Чиглүүлгийн заавар: алхах горим ажиллаж байвал сэрэмжлүүлэгтэй ээлжилнэ. Хэлээгүй бол false. */
+  const announce = useCallback(
+    (text: string, audio: string | null) => {
+      const session = active ? sessionRef.current : null;
+      if (session) return session.say(text, PRIORITY.navigation, () => speakDescription(text, audio));
+      void speakDescription(text, audio);
+      return true;
+    },
+    [active],
+  );
+
+  return { active, lastDescription, error, frameUri, start, stop, suspend, announce };
 }

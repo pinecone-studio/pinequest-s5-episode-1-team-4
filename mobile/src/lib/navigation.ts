@@ -6,11 +6,14 @@ import { postForm } from './api';
 export type LatLon = { lat: number; lon: number };
 export type Spoken = { text: string; audio: string | null };
 export type Maneuver = LatLon & { announce: Spoken; now: Spoken };
+export type VoiceCommand = 'read' | 'scene' | 'walk_on' | 'walk_off';
 export type NavigationPlan = {
   text: string;
-  place: string;
+  /** Горимын тушаал бол маршрутгүй ирнэ. */
+  command?: VoiceCommand;
+  place?: string;
   found: boolean;
-  confirm: Spoken;
+  confirm?: Spoken;
   start?: Spoken;
   arrive?: Spoken;
   maneuvers?: Maneuver[];
@@ -75,10 +78,7 @@ function simulateWalk(path: [number, number][], onPosition: (position: LatLon) =
         index += 1;
       } else {
         const t = budget / gap;
-        position = {
-          lat: position.lat + (next.lat - position.lat) * t,
-          lon: position.lon + (next.lon - position.lon) * t,
-        };
+        position = { lat: position.lat + (next.lat - position.lat) * t, lon: position.lon + (next.lon - position.lon) * t };
         budget = 0;
       }
     }
