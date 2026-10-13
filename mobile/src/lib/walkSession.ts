@@ -12,8 +12,9 @@ import type { WalkFrame } from './walkCapture';
 const GEMINI_INTERVAL_MS = 6_000;
 // Дүрс өөрчлөгдсөн ч Gemini-г үүнээс ойр дуудахгүй.
 const GEMINI_MIN_GAP_MS = 3_000;
-// Үүнээс хуучин зургийн тайлбар нь хэрэглэгч аль хэдийн өнгөрсөн зүйл байж болно.
-const GEMINI_MAX_AGE_MS = 6_000;
+// Үүнээс хуучин зургийн тайлбар нь хэрэглэгч аль хэдийн өнгөрсөн зүйл байж болно. Гадаа Gemini 4–9 сек
+// зарцуулдаг тул 6 сек байхад худгийн таг, кабель зэргийг бараг бүгдийг хаяж байсан.
+const GEMINI_MAX_AGE_MS = 12_000;
 
 /** Илэрсэн зүйлсийн бүрэлдэхүүн. Чиглэлгүй — хил дээрх хэлбэлзэл Gemini-г дэмий дууддаг байсан. */
 const hazardKey = (hazards: Hazard[]) => [...new Set(hazards.map((hazard) => hazard.name))].sort().join('|');
@@ -33,8 +34,6 @@ export type WalkEvents = { onSpoken(text: string): void; isCurrent(): boolean };
 export class WalkSession {
   readonly speaker = new PrioritySpeaker();
   readonly filter = new AlertFilter();
-  /** Хэлсэн сэрэмжлүүлгийн тоо — Gemini-ийн тайлбар хуучирсныг мэдэхэд. */
-  private alertsSpoken = 0;
   private lastHazards = '';
   private lastGeminiAt = 0;
   private geminiRunning = false;
@@ -88,12 +87,11 @@ export class WalkSession {
   private async describe(frame: WalkFrame, takenAt: number) {
     this.geminiRunning = true;
     this.lastGeminiAt = Date.now();
-    const alertsBefore = this.alertsSpoken;
     let photoUri: string | undefined;
     try {
       photoUri = await frame.detailUri();
       const result = await describeWhileWalking(photoUri, this.previous);
-      if (result) await this.sayDescription(result, takenAt, alertsBefore);
+      if (result) await this.sayDescription(result, takenAt);
     } catch {
       // Gemini ачаалалтай байсан ч YOLO-гийн сэрэмжлүүлэг үргэлжилнэ.
     } finally {
@@ -104,17 +102,14 @@ export class WalkSession {
   }
 
   /**
-   * Хэрэглэгч өнгөрсөн бол хуучин зургийн тайлбар төөрөгдүүлнэ. Энгийн тайлбарыг шинэ
-   * сэрэмжлүүлэг хэлэгдсэн бол алгасна; шат, нүх зэрэг аюулыг зөвхөн хэт хуучирсан үед.
+   * Хэрэглэгч өнгөрсөн бол хуучин зургийн тайлбар төөрөгдүүлнэ — хэт хуучирсныг алгасна. Гудамжинд
+   * машины сэрэмжлүүлэг тасралтгүй тул "шинэ сэрэмжлүүлэг хэлэгдсэн бол алгасах" нь бүх тайлбарыг хаадаг байсан.
    */
-  private async sayDescription({ description, audioBase64 }: SceneAnalysis, takenAt: number, alertsBefore: number) {
+  private async sayDescription({ description, audioBase64 }: SceneAnalysis, takenAt: number) {
     const priority = DANGER_WORDS.test(description) ? PRIORITY.danger : PRIORITY.info;
     // Хэлж буй нь адил эсвэл илүү чухал бол дуусахыг хүлээнэ.
     if (priority <= this.speaker.current) await this.speaker.speaking;
-    const stale =
-      !this.events.isCurrent() ||
-      Date.now() - takenAt > GEMINI_MAX_AGE_MS ||
-      (priority < PRIORITY.danger && this.alertsSpoken !== alertsBefore);
+    const stale = !this.events.isCurrent() || Date.now() - takenAt > GEMINI_MAX_AGE_MS;
     const spoken = !stale && this.say(description, priority, () => speakDescription(description, audioBase64));
     if (spoken) void Haptics.notificationAsync(FEEDBACK[priority]);
   }
@@ -125,7 +120,6 @@ export class WalkSession {
     const spoken = this.filter.shouldAlert(hazard, now) && this.say(text, priority, speak);
     if (spoken) {
       this.filter.alerted(hazard, now);
-      this.alertsSpoken += 1;
       void Haptics.notificationAsync(FEEDBACK[priority]);
     }
     return spoken;
