@@ -8,8 +8,9 @@ import { playPhrase, stopSpeaking } from '../lib/speech';
 import type { FrameSource } from '../lib/walkCapture';
 import { WalkSession } from '../lib/walkSession';
 
-// YOLO ~0.1 сек тул 1.2 сек тутам шинэ кадр шалгана.
-const FAST_CYCLE_MS = 1_200;
+// Кадр авах ~0.2 сек, илрүүлэх ~0.25 сек — 0.6 сек тутам шалгахад саад гарч ирснээс
+// хэлэх хүртэл хамгийн ихдээ ~1 сек. 1.2 сек байхад шинэ саадыг 0.6 сек хүртэл хүлээж байсан.
+const FAST_CYCLE_MS = 600;
 // Алдаа гарсны дараа илүү удаан хүлээнэ.
 const RETRY_DELAY_MS = 4_000;
 const MAX_CONSECUTIVE_FAILURES = 3;
