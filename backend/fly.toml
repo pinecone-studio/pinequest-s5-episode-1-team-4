@@ -1,0 +1,33 @@
+# Fly.io — VisionMate backend. Нууц түлхүүрүүдийг (GEMINI_API_KEY, CHIMEGE_TOKEN) `fly secrets set`-ээр тавина.
+app = "visionmate-team4"
+# Токио — Монголд хамгийн ойрын бүс.
+primary_region = "nrt"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8000"
+  DETECTOR = "rfdetr"
+  # OWLv2 2 GB-д багтахгүй (OOM), сул CPU дээр ~12 сек — cloud-д Gemini.
+  WALK_ANALYZER = "gemini"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  # Laptop гол, cloud нөөц тул ашиглаагүй үед унтарна (секундээр төлдөг). Анхны хүсэлт
+  # машиныг асааж model ачаалахад ~20–40 сек хүлээнэ — демогийн өмнө /health-ээр сэрээнэ.
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[http_service.checks]]
+    grace_period = "90s"
+    interval = "30s"
+    timeout = "5s"
+    method = "GET"
+    path = "/health"
+
+[[vm]]
+  size = "shared-cpu-4x"
+  memory = "2gb"
