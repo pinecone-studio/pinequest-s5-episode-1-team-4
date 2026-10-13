@@ -14,6 +14,8 @@ const PREWARM_GAP_MS = 250;
  * өгүүлбэрт ~1 сек зарцуулдаг; "Урд хүн байна." гэх мэт олон давтагддаг өгүүлбэрийг
  * дахин үүсгэхгүй, backend дахин асахад ч алга болохгүй.
  */
+const hasDigits = (text: string) => /\d/.test(text);
+
 export class AlertAudioCache {
   private readonly memory = new Map<string, string>();
   private readonly pending = new Map<string, Promise<string | null>>();
@@ -52,8 +54,9 @@ export class AlertAudioCache {
   }
 
   private async synthesize(text: string): Promise<string | null> {
-    // Загвар өгүүлбэр зөвхөн кирилл тул normalize хэрэггүй — Чимэгэ-гийн хүсэлт хоёр дахин цөөрнө.
-    const audio = await this.synthesizer.synthesize(text, { normalize: false });
+    // Сэрэмжлүүлэг зөвхөн кирилл тул normalize хэрэггүй — хүсэлт хоёр дахин цөөрнө. Чиглүүлгийн
+    // "50 метр", "1.3 километр"-ийн тоог normalize-гүй бол Чимэгэ алгасдаг.
+    const audio = await this.synthesizer.synthesize(text, { normalize: hasDigits(text) });
     if (!audio) return null;
     const base64 = Buffer.from(audio).toString('base64');
     this.memory.set(text, base64);
@@ -62,7 +65,9 @@ export class AlertAudioCache {
   }
 
   private file(text: string) {
-    const hash = createHash('sha1').update(`${this.voiceKey}\n${text}`).digest('hex');
+    // Тоотой өгүүлбэрийн normalize-гүй үүссэн хуучин дууг дахин ашиглахгүй.
+    const key = hasDigits(text) ? `${this.voiceKey}\nnormalized\n${text}` : `${this.voiceKey}\n${text}`;
+    const hash = createHash('sha1').update(key).digest('hex');
     return path.join(this.dir ?? '', `${hash}.wav`);
   }
 

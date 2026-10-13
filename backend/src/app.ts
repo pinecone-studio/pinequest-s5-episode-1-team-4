@@ -8,6 +8,7 @@ import type { Settings } from './config';
 import { HazardDetector, type ObjectDetector } from './detector';
 import { OwlVitDetector } from './openVocab';
 import { detectRoutes } from './routes/detect';
+import { navigateRoutes } from './routes/navigate';
 import { analyzeRoutes } from './routes/analyze';
 import { readRoutes } from './routes/read';
 import { walkRoutes } from './routes/walk';
@@ -51,6 +52,7 @@ export function createApp({
   app.route('/api/v1', readRoutes(settings, analyzer, speech));
   app.route('/api/v1', walkRoutes(settings, analyzer, speech));
   app.route('/api/v1', detectRoutes(settings, detector, alertAudio));
+  app.route('/api/v1', navigateRoutes(settings, alertAudio));
 
   // AI-ийн алдааг Монгол мессежтэй нь, бусдыг ерөнхий мессежээр буцаана.
   app.onError((error, c) => {
