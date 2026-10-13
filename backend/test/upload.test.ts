@@ -49,6 +49,7 @@ describe('loadSettings', () => {
       geminiWalkAlternates: ['gemini-3.5-flash'],
       chimegeVoiceId: 'FEMALE3v2',
       chimegeSpeed: 1,
+      detector: 'yolox',
     });
   });
 
