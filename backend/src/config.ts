@@ -13,6 +13,8 @@ export type Settings = {
   chimegeSpeed: number;
   /** COCO илрүүлэгч: yolox (2021) эсвэл rfdetr (ViT, нохой зэргийг илүү сайн олдог). */
   detector: 'yolox' | 'rfdetr';
+  /** Алхах горимын нэмэлт шалгалт: gemini эсвэл local (OWLv2-оор шат, API-гүй). */
+  walkAnalyzer: 'gemini' | 'local';
 };
 
 type Env = Record<string, string | undefined>;
@@ -37,5 +39,6 @@ export function loadSettings(env: Env = process.env): Settings {
     chimegeVoiceId: env.CHIMEGE_VOICE_ID?.trim() || 'FEMALE3v2',
     chimegeSpeed: Number(env.CHIMEGE_SPEED?.trim() || 1),
     detector: env.DETECTOR?.trim() === 'rfdetr' ? 'rfdetr' : 'yolox',
+    walkAnalyzer: env.WALK_ANALYZER?.trim() === 'local' ? 'local' : 'gemini',
   };
 }
