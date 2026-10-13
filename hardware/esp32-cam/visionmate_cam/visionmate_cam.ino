@@ -117,6 +117,9 @@ static void startServer() {
   httpd_config_t config = HTTPD_DEFAULT_CONFIG();
   // iPhone холболтоо нээлттэй үлдээдэг — сокет дүүрвэл шинэ хүсэлт хариугүй өлгөөтэй үлдэнэ.
   config.lru_purge_enable = true;
+  // Wi-Fi-д пакет алдагдахад анхдагч 5 сек хүлээж, дараагийн бүх хүсэлт гацдаг байсан.
+  config.recv_wait_timeout = 1;
+  config.send_wait_timeout = 2;
   httpd_handle_t server = nullptr;
   if (httpd_start(&server, &config) != ESP_OK) {
     Serial.println("HTTP сервер асаагүй.");

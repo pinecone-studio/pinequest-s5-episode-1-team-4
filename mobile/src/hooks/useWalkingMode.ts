@@ -1,8 +1,10 @@
+import { File, Paths } from 'expo-file-system';
 import * as Haptics from 'expo-haptics';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 
+import { deletePhoto } from '../lib/api';
 import { sleep, withTimeout } from '../lib/async';
 import { playPhrase, stopSpeaking } from '../lib/speech';
 import type { FrameSource } from '../lib/walkCapture';
@@ -23,9 +25,17 @@ const STOP_FEEDBACK = {
   'walk-error': Haptics.NotificationFeedbackType.Error,
 };
 
-async function runCycle(session: WalkSession, captureFrame: FrameSource) {
+/** Кадрын хуулбар — урьдчилан харах дүрс камерт тусдаа хүсэлт явуулахгүй (ESP32 нэг удаад нэгийг үйлчилнэ). */
+function previewCopy(uri: string) {
+  const copy = new File(Paths.cache, `walk-preview-${Date.now()}.jpg`);
+  new File(uri).copySync(copy);
+  return copy.uri;
+}
+
+async function runCycle(session: WalkSession, captureFrame: FrameSource, show: (uri: string) => void) {
   const frame = await withTimeout(captureFrame(), CAPTURE_TIMEOUT_MS, 'Камер хариу өгсөнгүй.');
   if (!frame) throw new Error('Зураг авч чадсангүй.');
+  show(previewCopy(frame.uri));
   await session.inspect(frame);
 }
 
@@ -41,6 +51,7 @@ export function useWalkingMode(captureFrame: FrameSource) {
   const [active, setActive] = useState(false);
   const [lastDescription, setLastDescription] = useState('');
   const [error, setError] = useState('');
+  const [frameUri, setFrameUri] = useState<string>();
   // Өсгөх бүрд ажиллаж буй давталт зогсоно.
   const runId = useRef(0);
 
@@ -62,10 +73,16 @@ export function useWalkingMode(captureFrame: FrameSource) {
     await playPhrase('walk-on');
 
     const session = new WalkSession({ onSpoken: setLastDescription, isCurrent });
+    let shown: string | undefined;
+    const show = (uri: string) => {
+      if (shown) deletePhoto(shown);
+      shown = uri;
+      setFrameUri(uri);
+    };
     let failures = 0;
     while (isCurrent()) {
       const started = Date.now();
-      const cause = await runCycle(session, captureFrame).then(() => null, (e: unknown) => e ?? 'error');
+      const cause = await runCycle(session, captureFrame, show).then(() => null, (e: unknown) => e ?? 'error');
       if (!isCurrent()) return;
       failures = cause ? failures + 1 : 0;
       setError(errorText(cause));
@@ -88,5 +105,5 @@ export function useWalkingMode(captureFrame: FrameSource) {
   // Дэлгэц солигдоход ажиллаж буй давталтыг зогсооно.
   useEffect(() => () => void (runId.current += 1), []);
 
-  return { active, lastDescription, error, start, stop };
+  return { active, lastDescription, error, frameUri, start, stop };
 }

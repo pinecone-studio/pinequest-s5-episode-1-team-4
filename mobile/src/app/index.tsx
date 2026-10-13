@@ -88,9 +88,9 @@ export default function HomeScreen() {
         <Pressable accessibilityRole="button" disabled={camera === 'checking'} onPress={checkCamera}>
           <Text style={[styles.status, camera === 'missing' && styles.warning]}>{CAMERA_STATUS[camera]}</Text>
         </Pressable>
-        {/* ESP32 нэг удаад нэг хүсэлт үйлчилдэг тул шинжилгээний үед зогсож, алхах горимд удаашрана —
-            сэрэмжлүүлгийн кадр хүлээхгүй. Бусад үед бараг видео. */}
-        <CameraPreview paused={busy !== null} refreshMs={walking.active ? 1_000 : 150} />
+        {/* ESP32 нэг удаад нэг хүсэлт үйлчилдэг тул шинжилгээний үед зогсож, алхах горимд таних кадрыг
+            харуулна — сэрэмжлүүлгийн кадр хүлээхгүй. Бусад үед бараг видео. */}
+        <CameraPreview paused={busy !== null || walking.active} frameUri={walking.frameUri} />
 
         {(Object.keys(TASKS) as Task[]).map((task) => (
           <BigButton

@@ -3,29 +3,44 @@ import { Image, StyleSheet, View } from 'react-native';
 
 import { getCameraUrl } from '../lib/camera';
 
+const REFRESH_MS = 150;
 const RETRY_MS = 3_000;
+// Wi-Fi-д гацсан кадрыг хүлээлгүй орхиж шинийг авна — эс бөгөөс дүрс хэдэн секунд хөлддөг.
+const STALL_MS = 1_500;
 
 type Props = {
   paused: boolean;
-  /** Кадр ирсний дараа дараагийнхыг хүсэх хүртэл хүлээх хугацаа. */
-  refreshMs: number;
+  /** Алхах горимын таних кадр — байвал камерт тусдаа хүсэлт явуулахгүй, үүнийг харуулна. */
+  frameUri?: string;
 };
 
 /**
  * Камерын харж буйг харуулна — туслагч хүн камерыг зөв чиглүүлэхэд.
  * Шинэ кадрыг далд ачаалж байж солино, эс бөгөөс зураг анивчина.
  */
-export function CameraPreview({ paused, refreshMs }: Props) {
+export function CameraPreview({ paused, frameUri }: Props) {
   const [shown, setShown] = useState<string>();
   const [next, setNext] = useState<string>();
   const [failed, setFailed] = useState(false);
+  const [seenFrame, setSeenFrame] = useState(frameUri);
+
+  if (frameUri !== seenFrame) {
+    setSeenFrame(frameUri);
+    if (frameUri) setNext(frameUri);
+  }
 
   useEffect(() => {
     if (paused || next) return;
-    const delay = failed ? RETRY_MS : shown ? refreshMs : 0;
+    const delay = failed ? RETRY_MS : shown ? REFRESH_MS : 0;
     const timer = setTimeout(() => setNext(`${getCameraUrl()}/capture?t=${Date.now()}`), delay);
     return () => clearTimeout(timer);
-  }, [paused, next, shown, failed, refreshMs]);
+  }, [paused, next, shown, failed]);
+
+  useEffect(() => {
+    if (!next) return;
+    const timer = setTimeout(() => setNext(undefined), STALL_MS);
+    return () => clearTimeout(timer);
+  }, [next]);
 
   return (
     // Хараагүй хэрэглэгчийн дэлгэц уншигчид хэрэггүй.
