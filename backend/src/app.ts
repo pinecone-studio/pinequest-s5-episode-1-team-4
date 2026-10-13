@@ -9,6 +9,7 @@ import { HazardDetector, type ObjectDetector } from './detector';
 import { LocalWalkAnalyzer } from './localWalk';
 import { OwlVitDetector } from './openVocab';
 import { detectRoutes } from './routes/detect';
+import { navigateRoutes } from './routes/navigate';
 import { analyzeRoutes } from './routes/analyze';
 import { readRoutes } from './routes/read';
 import { RfDetrModel } from './rfdetr';
@@ -55,6 +56,7 @@ export function createApp({
   const walkAnalyzer = settings.walkAnalyzer === 'local' ? new LocalWalkAnalyzer(analyzer) : analyzer;
   app.route('/api/v1', walkRoutes(settings, walkAnalyzer, speech));
   app.route('/api/v1', detectRoutes(settings, detector, alertAudio));
+  app.route('/api/v1', navigateRoutes(settings, alertAudio));
 
   // AI-ийн алдааг Монгол мессежтэй нь, бусдыг ерөнхий мессежээр буцаана.
   app.onError((error, c) => {

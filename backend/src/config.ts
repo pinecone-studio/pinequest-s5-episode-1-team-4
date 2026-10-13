@@ -9,6 +9,8 @@ export type Settings = {
   /** Алхах горимд ээлжлэх model-ууд — хязгаар нь model тус бүрд тусдаа. */
   geminiWalkAlternates: string[];
   chimegeToken?: string;
+  /** Чимэгэ яриа таних (STT) — дуу үүсгэхээс тусдаа token. */
+  chimegeSttToken?: string;
   chimegeVoiceId: string;
   chimegeSpeed: number;
   /** COCO илрүүлэгч: yolox (2021) эсвэл rfdetr (ViT, нохой зэргийг илүү сайн олдог). */
@@ -36,6 +38,7 @@ export function loadSettings(env: Env = process.env): Settings {
     geminiWalkModel: env.GEMINI_WALK_MODEL?.trim() || 'gemini-3.5-flash-lite',
     geminiWalkAlternates: list(env.GEMINI_WALK_ALTERNATES, 'gemini-3.5-flash'),
     chimegeToken: env.CHIMEGE_TOKEN?.trim() || undefined,
+    chimegeSttToken: env.CHIMEGE_STT_TOKEN?.trim() || undefined,
     chimegeVoiceId: env.CHIMEGE_VOICE_ID?.trim() || 'FEMALE3v2',
     chimegeSpeed: Number(env.CHIMEGE_SPEED?.trim() || 1),
     detector: env.DETECTOR?.trim() === 'rfdetr' ? 'rfdetr' : 'yolox',
