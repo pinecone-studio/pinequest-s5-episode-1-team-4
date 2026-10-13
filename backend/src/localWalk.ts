@@ -26,8 +26,15 @@ export function stairsSentence(found: { score: number; box: Box }[]): string | n
   return center < 0.35 ? 'Зүүн талд шат байна.' : center > 0.65 ? 'Баруун талд шат байна.' : 'Урд шат байна.';
 }
 
+// Шат олдоогүй үед хоёр дуудлага тутмын нэгд Gemini-ээс самбарын бичиг, жижиг саадыг асууна
+// (~12 сек тутам) — үнэгүй хязгаарт багтана.
+const GEMINI_EVERY = 2;
+
 export class LocalWalkAnalyzer implements SceneAnalyzer {
   private pipeline: Promise<ZeroShotPipeline> | null = null;
+  private calls = 0;
+
+  constructor(private readonly fallback?: SceneAnalyzer) {}
 
   async analyze(image: Uint8Array, _mediaType: string, request?: AnalysisRequest): Promise<string> {
     if (request?.mode !== 'walk') throw new Error('Локал шинжилгээ зөвхөн алхах горимд.');
@@ -38,6 +45,8 @@ export class LocalWalkAnalyzer implements SceneAnalyzer {
     const raw = await RawImage.fromBlob(new Blob([new Uint8Array(image)]));
     const sentence = stairsSentence(await detect(raw, [QUERY], { threshold: MIN_SCORE / 2, percentage: true }));
     // Өмнө хэлснээ давтахгүй — Gemini-ийн заавартай адил.
-    return sentence && sentence !== request.previous ? sentence : NO_CHANGE;
+    if (sentence && sentence !== request.previous) return sentence;
+    const askGemini = this.fallback && ++this.calls % GEMINI_EVERY === 0;
+    return askGemini ? this.fallback!.analyze(image, _mediaType, request) : NO_CHANGE;
   }
 }
