@@ -2,11 +2,10 @@ import { File, Paths } from 'expo-file-system';
 import * as Haptics from 'expo-haptics';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AppState } from 'react-native';
 
 import { deletePhoto } from '../lib/api';
 import { sleep, withTimeout } from '../lib/async';
-import { playPhrase, stopSpeaking } from '../lib/speech';
+import { keepAliveInBackground, playPhrase, stopSpeaking } from '../lib/speech';
 import type { FrameSource } from '../lib/walkCapture';
 import { WalkSession } from '../lib/walkSession';
 
@@ -59,6 +58,7 @@ export function useWalkingMode(captureFrame: FrameSource) {
   const stop = useCallback(async (phrase: keyof typeof STOP_FEEDBACK = 'walk-off') => {
     runId.current += 1;
     setActive(false);
+    void keepAliveInBackground(false);
     await stopSpeaking();
     void Haptics.notificationAsync(STOP_FEEDBACK[phrase]);
     await playPhrase(phrase);
@@ -73,6 +73,7 @@ export function useWalkingMode(captureFrame: FrameSource) {
     setError('');
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     await playPhrase('walk-on');
+    void keepAliveInBackground(true);
 
     const session = new WalkSession({ onSpoken: setLastDescription, isCurrent });
     let shown: string | undefined;
@@ -99,17 +100,19 @@ export function useWalkingMode(captureFrame: FrameSource) {
 
   useEffect(() => {
     if (!active) return;
-    // Дэлгэц унтарвал, апп background руу орвол камер зогсдог.
+    // Нээлттэй үед дэлгэц өөрөө түгжигдэхгүй; хэрэглэгч түгжвэл ESP32 камер, чимээгүй дуугаар үргэлжилнэ.
     void activateKeepAwakeAsync(KEEP_AWAKE_TAG);
-    const subscription = AppState.addEventListener('change', (state) => state !== 'active' && void stop());
-    return () => {
-      subscription.remove();
-      void deactivateKeepAwake(KEEP_AWAKE_TAG);
-    };
-  }, [active, stop]);
+    return () => void deactivateKeepAwake(KEEP_AWAKE_TAG);
+  }, [active]);
 
   // Дэлгэц солигдоход ажиллаж буй давталтыг зогсооно.
-  useEffect(() => () => void (runId.current += 1), []);
+  useEffect(
+    () => () => {
+      runId.current += 1;
+      void keepAliveInBackground(false);
+    },
+    [],
+  );
 
   const suspend = useCallback((on: boolean) => void (suspended.current = on), []);
 
