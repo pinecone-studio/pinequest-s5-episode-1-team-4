@@ -2,7 +2,7 @@ import { serve } from '@hono/node-server';
 
 import { createApp } from './app';
 import { loadSettings } from './config';
-import { commonAlerts } from './hazards';
+import { allAlerts } from './hazards';
 
 try {
   process.loadEnvFile();
@@ -19,8 +19,8 @@ serve({ fetch: app.fetch, port, hostname: '0.0.0.0' }, (info) => {
   console.log(`VisionMate API: http://${info.address}:${info.port}`);
 });
 
-// Түгээмэл сэрэмжлүүлгийн дууг ар талд бэлдэнэ — эхний удаа ч шууд хэлэгдэнэ.
+// Бүх сэрэмжлүүлгийн дууг ар талд бэлдэнэ — эхний удаа ч шууд хэлэгдэнэ.
 if (settings.chimegeToken) {
-  const alerts = commonAlerts();
+  const alerts = allAlerts();
   void app.alertAudio.prewarm(alerts).then((created) => console.log(`Сэрэмжлүүлгийн дуу: ${alerts.length} (шинээр ${created})`));
 }

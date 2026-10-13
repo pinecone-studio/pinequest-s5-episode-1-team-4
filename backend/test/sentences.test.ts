@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { commonAlerts, describeHazards, toHazards } from '../src/hazards';
+import { allAlerts, describeHazards, toHazards } from '../src/hazards';
 import type { Box } from '../src/yolo';
 
 const detection = (label: string, box: Box, score = 0.9) => ({ label, box, score });
@@ -28,13 +28,20 @@ describe('describeHazards', () => {
   });
 });
 
-describe('commonAlerts', () => {
-  it('lists frequent alerts for vehicles, people, animals and doors', () => {
-    const alerts = commonAlerts();
+describe('allAlerts', () => {
+  it('lists every alert the walk mode can say, most important first', () => {
+    const alerts = allAlerts();
     expect(alerts).toContain('Урд ойрхон хүн байна.');
     expect(alerts).toContain('Зүүн талд машин байна.');
     expect(alerts).toContain('Баруун талд ойрхон хаалга байна.');
-    expect(alerts).not.toContain('Урд сандал байна.');
+    expect(alerts).toContain('Урд сандал байна.');
+    expect(alerts.indexOf('Урд машин байна.')).toBeLessThan(alerts.indexOf('Урд сандал байна.'));
     expect(new Set(alerts).size).toBe(alerts.length);
+  });
+
+  it('includes every sentence describeHazards can produce for one hazard', () => {
+    const hazards = toHazards([{ label: 'chair', score: 0.9, box: [0.0, 0.4, 0.2, 0.95] }]);
+    const sentence = describeHazards(hazards);
+    if (sentence) expect(allAlerts()).toContain(sentence);
   });
 });
