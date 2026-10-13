@@ -22,12 +22,15 @@ let player: AudioPlayer | null = null;
 let currentFile: File | null = null;
 let finishPlayback: (() => void) | null = null;
 let audioModeReady: Promise<void> | null = null;
+let keepAlivePlayer: AudioPlayer | null = null;
 
 // Утас чимээгүй горимд байсан ч тайлбар заавал сонсогдох ёстой.
 function ensureAudioMode(): Promise<void> {
   audioModeReady ??= setAudioModeAsync({
     playsInSilentMode: true,
     interruptionMode: 'duckOthers',
+    // Утас түгжээтэй, халаасанд байхад ч сэрэмжлүүлэг сонсогдоно.
+    shouldPlayInBackground: true,
   }).catch(() => undefined);
   return audioModeReady;
 }
@@ -117,6 +120,18 @@ export async function playAudio(source: AudioSource): Promise<void> {
   await ensureAudioMode();
   // Тогтмол мессеж тоглохгүй байсан ч үндсэн ажлыг зогсоохгүй.
   await play(source).catch(() => undefined);
+}
+
+/**
+ * Алхах үед чимээгүй дууг тасралтгүй тоглуулна — iOS дуу тоглуулж буй аппыг түгжээтэй дэлгэцтэй
+ * үед зогсоодоггүй; сэрэмжлүүлэг хоорондын чимээгүйд эс бөгөөс апп зогсоно.
+ */
+export async function keepAliveInBackground(on: boolean) {
+  await ensureAudioMode();
+  keepAlivePlayer ??= createAudioPlayer(require('../../assets/audio/silence.wav'));
+  keepAlivePlayer.loop = true;
+  if (on) keepAlivePlayer.play();
+  else keepAlivePlayer.pause();
 }
 
 export function playPhrase(phrase: Phrase): Promise<void> {
