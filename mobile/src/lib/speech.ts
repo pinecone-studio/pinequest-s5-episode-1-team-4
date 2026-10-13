@@ -24,14 +24,24 @@ let finishPlayback: (() => void) | null = null;
 let audioModeReady: Promise<void> | null = null;
 let keepAlivePlayer: AudioPlayer | null = null;
 
-// Утас чимээгүй горимд байсан ч тайлбар заавал сонсогдох ёстой.
-function ensureAudioMode(): Promise<void> {
-  audioModeReady ??= setAudioModeAsync({
+const audioMode = (allowsRecording: boolean) =>
+  setAudioModeAsync({
     playsInSilentMode: true,
     interruptionMode: 'duckOthers',
     // Утас түгжээтэй, халаасанд байхад ч сэрэмжлүүлэг сонсогдоно.
     shouldPlayInBackground: true,
+    allowsRecording,
   }).catch(() => undefined);
+
+// Утас чимээгүй горимд байсан ч тайлбар заавал сонсогдох ёстой.
+function ensureAudioMode(): Promise<void> {
+  audioModeReady ??= audioMode(false);
+  return audioModeReady;
+}
+
+/** Микрофоноор бичих үед л асаана — асаалттай үед iOS дууг чихний чанга яригч руу шилжүүлдэг. */
+export function setRecordingMode(on: boolean): Promise<void> {
+  audioModeReady = audioMode(on);
   return audioModeReady;
 }
 

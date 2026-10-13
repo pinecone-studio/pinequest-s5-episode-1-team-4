@@ -30,7 +30,7 @@
       [
         "expo-audio",
         {
-          "microphonePermission": false,
+          "microphonePermission": "VisionMate очих газрын нэрийг таны хэлснээр сонсоно.",
           "recordAudioAndroid": false,
           "enableBackgroundPlayback": true
         }

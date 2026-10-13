@@ -4,6 +4,7 @@ import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { CameraPreview } from '../components/CameraPreview';
+import { useNavigation } from '../hooks/useNavigation';
 import { useWalkingMode } from '../hooks/useWalkingMode';
 import { analyzeScene, deletePhoto, readText, type SceneAnalysis } from '../lib/api';
 import { cameraFrames, captureJpeg, isCameraReachable } from '../lib/camera';
@@ -31,15 +32,24 @@ const CAMERA_STATUS = {
   missing: 'Камер олдсонгүй. Дарж дахин шалгана.',
 };
 
-type ButtonProps = { label: string; onPress(): void; disabled?: boolean; active?: boolean };
+type ButtonProps = {
+  label: string;
+  onPress?(): void;
+  onPressIn?(): void;
+  onPressOut?(): void;
+  disabled?: boolean;
+  active?: boolean;
+};
 
-function BigButton({ label, onPress, disabled = false, active = false }: ButtonProps) {
+function BigButton({ label, onPress, onPressIn, onPressOut, disabled = false, active = false }: ButtonProps) {
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityState={{ disabled, selected: active }}
       disabled={disabled}
       onPress={onPress}
+      onPressIn={onPressIn}
+      onPressOut={onPressOut}
       style={({ pressed }) => [styles.button, active && styles.active, (pressed || disabled) && styles.dim]}
     >
       <Text style={styles.buttonText}>{label}</Text>
@@ -55,6 +65,7 @@ export default function HomeScreen() {
   const running = useRef(false);
   const taps = useRef<{ count: number; timer?: ReturnType<typeof setTimeout> }>({ count: 0 });
   const { start: startWalking, suspend: suspendWalking } = walking;
+  const navigation = useNavigation();
 
   const checkCamera = () => {
     setCamera('checking');
@@ -75,8 +86,11 @@ export default function HomeScreen() {
     tap.count += 1;
     tap.timer = setTimeout(() => {
       const task = TAP_TASKS[tap.count];
+      // Маршрут батлахыг хүлээж байвал 2 товшилт нь уншихын оронд чиглүүлгийг эхлүүлнэ.
+      const startsNavigation = tap.count === 2 && navigation.pending !== null;
       tap.count = 0;
-      if (task) void runTask(task);
+      if (startsNavigation) navigation.start();
+      else if (task) void runTask(task);
     }, TAP_GAP_MS);
   }
 
@@ -140,6 +154,22 @@ export default function HomeScreen() {
             disabled={busy !== null}
             active={walking.active}
           />
+
+          {/* Сэрэмжлүүлэг ярихгүйн тулд хэлж байх хооронд алхах горим түр зогсоно. */}
+          <BigButton
+            label={navigation.active ? 'Чиглүүлэг зогсоох' : 'Хаашаа явах вэ? Дарж байгаад хэл'}
+            onPress={navigation.active ? navigation.stop : undefined}
+            onPressIn={navigation.active ? undefined : () => (suspendWalking(true), void navigation.startListening())}
+            onPressOut={
+              navigation.active
+                ? undefined
+                : () => void navigation.finishListening().finally(() => suspendWalking(false))
+            }
+            disabled={busy !== null}
+            active={navigation.active}
+          />
+          {navigation.pending && <BigButton label="Чиглүүлж эхлэх" onPress={navigation.start} />}
+          {navigation.message !== '' && <Text style={styles.message}>{navigation.message}</Text>}
 
           <Text accessibilityLiveRegion="polite" style={styles.message}>
             {walking.active ? walkText : message}
