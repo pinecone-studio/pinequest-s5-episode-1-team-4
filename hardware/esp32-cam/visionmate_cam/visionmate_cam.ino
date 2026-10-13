@@ -158,8 +158,15 @@ void setup() {
   }
   sensor_t *sensor = esp_camera_sensor_get();
   sensor->set_framesize(sensor, FRAMESIZE_VGA);
-  // Модуль толин тусгал шиг зураг өгдөг — эс бөгөөс зүүн/баруун сэрэмжлүүлэг солигдоно.
-  sensor->set_hmirror(sensor, 1);
+  // Малгайнд тэжээлийн оролтыг эсрэг тал руу харуулж зүүдэг тул зургийг 180° эргүүлнэ —
+  // эс бөгөөс зураг эргүү, зүүн/баруун сэрэмжлүүлэг солигдоно.
+  sensor->set_hmirror(sensor, 0);
+  sensor->set_vflip(sensor, 1);
+  // Байрны гэрэлд урт exposure алхаж байхад кадрыг бүдгэрүүлдэг. Exposure-ийг богиносгож,
+  // дутуу гэрлийг gain ба тоон тодролоор нөхнө — шуугиан нэмэгдэх ч YOLO-д бүдгэрэлтээс дээр.
+  sensor->set_ae_level(sensor, -2);
+  sensor->set_gainceiling(sensor, GAINCEILING_32X);
+  sensor->set_brightness(sensor, 1);
 
   connectWifi();
   // OTA нь mDNS-ийг (visionmate-cam.local) өөрөө асаана — апп камерыг энэ нэрээр олно.
