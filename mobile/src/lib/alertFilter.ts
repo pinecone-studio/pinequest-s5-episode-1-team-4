@@ -5,15 +5,18 @@ import { proximityLevel } from './proximity';
 // Хоёр кадрын ижил нэртэй, төв нь үүнээс ойр зүйлийг нэг зүйл гэж үзнэ. Хаалганы төв
 // 0.34–0.39 хооронд хэлбэлзэж "урд"/"зүүн талд" ээлжлэн хэлэгдэж байсан.
 const SAME_OBJECT_DX = 0.2;
-// Үүнээс бага итгэлцэлтэйг дараалсан 2 кадрт гарсан үед л хэлнэ — гэрийн орчинд нэг
+// Үүнээс бага итгэлцэлтэйг ойрын кадруудад дахин гарсан үед л хэлнэ — гэрийн орчинд нэг
 // кадрын худал илрүүлэлт олон байсан.
 const CONFIDENT_SCORE = 0.7;
+// OWL-ViT-ийн хаалга (35–49%) кадр алгасаж гардаг — зөвхөн өмнөх кадрыг харвал хэзээ ч баталгаажихгүй байсан.
+const CONFIRM_WINDOW_MS = 2_000;
 // Ижил зүйлийг энэ хугацаанд давтан хэлэхгүй — харин дараагийн зайн шатанд ойртвол хэлнэ.
 const ALERT_REPEAT_MS = 10_000;
 
 export const VEHICLES = new Set(['машин', 'автобус', 'ачааны машин', 'мотоцикл', 'галт тэрэг', 'дугуй']);
-// Эдгээр үг орсон бол аюултай: буух шат, нүх, ирмэг, тээврийн хэрэгсэл.
-export const DANGER_WORDS = /шат|гишгүүр|уруу|нүх|ирмэг|худаг|машин|автобус|мотоцикл/i;
+// Эдгээр үг орсон бол аюултай: буух шат, нүх, ирмэг, худгийн таг, кабель, багана, тээврийн хэрэгсэл.
+// "худгийн", "баганууд" — эгшиг гээгддэг тул "худа?г", "баган".
+export const DANGER_WORDS = /шат|гишгүүр|уруу|нүх|ирмэг|худа?г|таг|утас|кабел|баган|шон|машин|автобус|мотоцикл/i;
 
 export const sameObject = (a: Hazard, b: Hazard) => a.name === b.name && Math.abs(a.x - b.x) < SAME_OBJECT_DX;
 
@@ -24,13 +27,16 @@ export function hazardPriority(hazard: Hazard): number {
 
 /** Нэг зүйлийг хэзээ хэлэхийг шийднэ: худал илрүүлэлт, давталтыг шүүнэ. */
 export class AlertFilter {
-  private previousFrame: Hazard[] = [];
+  private recentFrames: { hazards: Hazard[]; at: number }[] = [];
   private last: Hazard | null = null;
   private lastAt = 0;
 
   shouldAlert(hazard: Hazard, now: number): boolean {
     const confirmed =
-      hazard.score >= CONFIDENT_SCORE || this.previousFrame.some((seen) => sameObject(seen, hazard));
+      hazard.score >= CONFIDENT_SCORE ||
+      this.recentFrames.some(
+        ({ hazards, at }) => now - at <= CONFIRM_WINDOW_MS && hazards.some((seen) => sameObject(seen, hazard)),
+      );
     const repeated =
       this.last !== null &&
       sameObject(this.last, hazard) &&
@@ -44,8 +50,8 @@ export class AlertFilter {
     this.lastAt = now;
   }
 
-  /** Энэ кадрын зүйлс — дараагийн кадрт баталгаажуулахад хэрэглэнэ. */
-  seen(hazards: Hazard[]) {
-    this.previousFrame = hazards;
+  /** Энэ кадрын зүйлс — дараагийн кадруудад баталгаажуулахад хэрэглэнэ. */
+  seen(hazards: Hazard[], now: number) {
+    this.recentFrames = [...this.recentFrames.filter(({ at }) => now - at <= CONFIRM_WINDOW_MS), { hazards, at: now }];
   }
 }

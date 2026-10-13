@@ -14,6 +14,8 @@ export type Phrase = keyof typeof PHRASES;
 
 // finish event ирэхгүй тохиолдолд тоглуулалт дууссанд тооцох хугацаа.
 const MAX_PLAYBACK_MS = 30_000;
+// Чимэгэ-ийн WAV-д дуусах event ирэхгүй бол үргэлжлэх хугацаа + энэ хэмжээгээр хүлээнэ.
+const FINISH_GRACE_MS = 500;
 const DEVICE_RATE = Platform.select({ ios: 0.48, default: 0.9 });
 
 let player: AudioPlayer | null = null;
@@ -46,21 +48,32 @@ function getPlayer(): AudioPlayer {
 }
 
 /** Дуу тоглуулж, дуусах эсвэл зогсоох хүртэл хүлээнэ. */
-function play(source: AudioSource): Promise<void> {
+function play(source: AudioSource, maxMs = MAX_PLAYBACK_MS): Promise<void> {
   const audio = getPlayer();
   audio.replace(source);
   return new Promise((resolve) => {
     finishPlayback = resolve;
     audio.play();
-    setTimeout(() => finishPlayback === resolve && settlePlayback(), MAX_PLAYBACK_MS);
+    setTimeout(() => finishPlayback === resolve && settlePlayback(), maxMs);
   });
+}
+
+/**
+ * WAV толгойн byte rate-ээр үргэлжлэх хугацаа. Дуусах event заримдаа ирдэггүй тул 30 сек хүлээж,
+ * тэр хооронд ижил ач холбогдолтой сэрэмжлүүлэг ("Урд ойрхон дэлгэц") хэлэгдэхгүй байсан.
+ */
+function wavDurationMs(audioBase64: string): number | null {
+  const header = atob(audioBase64.slice(0, 48));
+  const byteRate = [28, 29, 30, 31].reduce((rate, i, shift) => rate + (header.charCodeAt(i) << (8 * shift)), 0);
+  return byteRate > 0 ? (((audioBase64.length * 3) / 4 - 44) / byteRate) * 1000 : null;
 }
 
 function playWav(audioBase64: string): Promise<void> {
   const file = new File(Paths.cache, `visionmate-${Date.now()}.wav`);
   file.create({ overwrite: true });
   file.write(audioBase64, { encoding: 'base64' });
-  const playback = play({ uri: file.uri });
+  const duration = wavDurationMs(audioBase64);
+  const playback = play({ uri: file.uri }, duration === null ? MAX_PLAYBACK_MS : duration + FINISH_GRACE_MS);
   // Өмнөх дууны файлыг устгаж cache дүүргэхгүй.
   if (currentFile?.exists) currentFile.delete();
   currentFile = file;
