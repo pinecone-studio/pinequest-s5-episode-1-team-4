@@ -1,5 +1,5 @@
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -7,6 +7,7 @@ import { CameraPreview } from '../components/CameraPreview';
 import { useWalkingMode } from '../hooks/useWalkingMode';
 import { analyzeScene, deletePhoto, readText, type SceneAnalysis } from '../lib/api';
 import { cameraFrames, captureJpeg, isCameraReachable } from '../lib/camera';
+import { sleep } from '../lib/async';
 import { speakDescription } from '../lib/speech';
 import { colors } from '../theme';
 
@@ -17,6 +18,12 @@ const TASKS: Record<Task, { label: string; busy: string; hiRes: boolean; run(uri
   // Жижиг бичиг 640px-д уншигдахгүй.
   read: { label: 'Энийг унш', busy: 'Бичгийг уншиж байна…', hiRes: true, run: readText },
 };
+
+// Хараагүй хүн товч хайхгүйгээр: дэлгэцийн хаана ч 2 товшвол уншина, 3 товшвол орчноо тайлбарлана.
+const TAP_GAP_MS = 400;
+const TAP_TASKS: Record<number, Task> = { 2: 'read', 3: 'scene' };
+// Тод кадр авахын өмнө урьдчилан харах урсгал хаагдахыг хүлээнэ — эс бөгөөс кадрын хэмжээ солигдож будлина.
+const STREAM_CLOSE_MS = 300;
 
 const CAMERA_STATUS = {
   checking: 'Камерыг шалгаж байна…',
@@ -45,34 +52,59 @@ export default function HomeScreen() {
   const [busy, setBusy] = useState<Task | null>(null);
   const [message, setMessage] = useState('');
   const walking = useWalkingMode(cameraFrames);
+  const running = useRef(false);
+  const taps = useRef<{ count: number; timer?: ReturnType<typeof setTimeout> }>({ count: 0 });
+  const { start: startWalking, suspend: suspendWalking } = walking;
 
   const checkCamera = () => {
     setCamera('checking');
     void isCameraReachable().then((ok) => setCamera(ok ? 'ok' : 'missing'));
   };
 
+  // Апп нээгдэж камер олдмогц алхах горим өөрөө асна — товч хайх шаардлагагүй.
   useEffect(() => {
-    void isCameraReachable().then((ok) => setCamera(ok ? 'ok' : 'missing'));
-  }, []);
+    void isCameraReachable().then((ok) => {
+      setCamera(ok ? 'ok' : 'missing');
+      if (ok) void startWalking();
+    });
+  }, [startWalking]);
+
+  function onScreenTap() {
+    const tap = taps.current;
+    clearTimeout(tap.timer);
+    tap.count += 1;
+    tap.timer = setTimeout(() => {
+      const task = TAP_TASKS[tap.count];
+      tap.count = 0;
+      if (task) void runTask(task);
+    }, TAP_GAP_MS);
+  }
 
   async function runTask(task: Task) {
+    if (running.current) return;
+    running.current = true;
     const { busy: busyText, hiRes, run } = TASKS[task];
+    suspendWalking(true);
     setBusy(task);
     setMessage(busyText);
     let uri: string | undefined;
     try {
+      if (hiRes) await sleep(STREAM_CLOSE_MS);
       uri = await captureJpeg(hiRes);
       const { description, audioBase64 } = await run(uri);
       setMessage(description);
-      void speakDescription(description, audioBase64);
+      // Хэлж дуусахад алхах горим үргэлжилнэ.
+      await speakDescription(description, audioBase64);
     } catch (error) {
       const text = error instanceof Error ? error.message : 'Алдаа гарлаа.';
       setMessage(text);
       // Хэрэглэгч дэлгэц харахгүй тул алдааг ч дуугаар хэлнэ.
-      void speakDescription(text);
+      await speakDescription(text);
     } finally {
       if (uri) deletePhoto(uri);
       setBusy(null);
+      suspendWalking(false);
+      running.current = false;
     }
   }
 
@@ -80,38 +112,40 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.screen}>
-      <StatusBar style="light" />
-      <ScrollView contentContainerStyle={styles.content}>
-        <Text accessibilityRole="header" style={styles.title}>
-          VisionMate
-        </Text>
-        <Pressable accessibilityRole="button" disabled={camera === 'checking'} onPress={checkCamera}>
-          <Text style={[styles.status, camera === 'missing' && styles.warning]}>{CAMERA_STATUS[camera]}</Text>
-        </Pressable>
-        {/* Тод кадр авахад урсгал саад болохгүйн тулд шинжилгээний үед зогсоно. Урсгал ажиллахгүй бол
+      <Pressable style={styles.screen} onPress={onScreenTap} accessible={false}>
+        <StatusBar style="light" />
+        <ScrollView contentContainerStyle={styles.content}>
+          <Text accessibilityRole="header" style={styles.title}>
+            VisionMate
+          </Text>
+          <Pressable accessibilityRole="button" disabled={camera === 'checking'} onPress={checkCamera}>
+            <Text style={[styles.status, camera === 'missing' && styles.warning]}>{CAMERA_STATUS[camera]}</Text>
+          </Pressable>
+          {/* Тод кадр авахад урсгал саад болохгүйн тулд шинжилгээний үед зогсоно. Урсгал ажиллахгүй бол
             алхах горимд таних кадрыг харуулна — ESP32 нэг удаад нэг хүсэлт үйлчилдэг. */}
-        <CameraPreview paused={busy !== null} walking={walking.active} frameUri={walking.frameUri} />
+          <CameraPreview paused={busy !== null} walking={walking.active} frameUri={walking.frameUri} />
 
-        {(Object.keys(TASKS) as Task[]).map((task) => (
+          {(Object.keys(TASKS) as Task[]).map((task) => (
+            <BigButton
+              key={task}
+              label={TASKS[task].label}
+              onPress={() => void runTask(task)}
+              disabled={busy !== null}
+              active={busy === task}
+            />
+          ))}
           <BigButton
-            key={task}
-            label={TASKS[task].label}
-            onPress={() => void runTask(task)}
-            disabled={busy !== null || walking.active}
-            active={busy === task}
+            label={walking.active ? 'Алхах горимыг зогсоох' : 'Алхах горим'}
+            onPress={() => void (walking.active ? walking.stop() : walking.start())}
+            disabled={busy !== null}
+            active={walking.active}
           />
-        ))}
-        <BigButton
-          label={walking.active ? 'Алхах горимыг зогсоох' : 'Алхах горим'}
-          onPress={() => void (walking.active ? walking.stop() : walking.start())}
-          disabled={busy !== null}
-          active={walking.active}
-        />
 
-        <Text accessibilityLiveRegion="polite" style={styles.message}>
-          {walking.active ? walkText : message}
-        </Text>
-      </ScrollView>
+          <Text accessibilityLiveRegion="polite" style={styles.message}>
+            {walking.active ? walkText : message}
+          </Text>
+        </ScrollView>
+      </Pressable>
     </SafeAreaView>
   );
 }

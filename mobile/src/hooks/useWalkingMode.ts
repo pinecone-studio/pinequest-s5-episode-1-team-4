@@ -53,6 +53,8 @@ export function useWalkingMode(captureFrame: FrameSource) {
   const [frameUri, setFrameUri] = useState<string>();
   // Өсгөх бүрд ажиллаж буй давталт зогсоно.
   const runId = useRef(0);
+  // Унших, тайлбарлах үед давталт түр зогсож, дараа нь өөрөө үргэлжилнэ.
+  const suspended = useRef(false);
 
   const stop = useCallback(async (phrase: keyof typeof STOP_FEEDBACK = 'walk-off') => {
     runId.current += 1;
@@ -64,7 +66,8 @@ export function useWalkingMode(captureFrame: FrameSource) {
 
   const start = useCallback(async () => {
     const id = ++runId.current;
-    const isCurrent = () => runId.current === id;
+    const isCurrent = () => runId.current === id && !suspended.current;
+    const isRunning = () => runId.current === id;
     setActive(true);
     setLastDescription('');
     setError('');
@@ -79,10 +82,14 @@ export function useWalkingMode(captureFrame: FrameSource) {
       setFrameUri(uri);
     };
     let failures = 0;
-    while (isCurrent()) {
+    while (isRunning()) {
+      if (suspended.current) {
+        await sleep(200);
+        continue;
+      }
       const started = Date.now();
       const cause = await runCycle(session, captureFrame, show).then(() => null, (e: unknown) => e ?? 'error');
-      if (!isCurrent()) return;
+      if (!isRunning()) return;
       failures = cause ? failures + 1 : 0;
       setError(errorText(cause));
       if (failures >= MAX_CONSECUTIVE_FAILURES) return stop('walk-error');
@@ -104,5 +111,7 @@ export function useWalkingMode(captureFrame: FrameSource) {
   // Дэлгэц солигдоход ажиллаж буй давталтыг зогсооно.
   useEffect(() => () => void (runId.current += 1), []);
 
-  return { active, lastDescription, error, frameUri, start, stop };
+  const suspend = useCallback((on: boolean) => void (suspended.current = on), []);
+
+  return { active, lastDescription, error, frameUri, start, stop, suspend };
 }
