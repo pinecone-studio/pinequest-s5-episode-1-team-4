@@ -5,6 +5,7 @@
  *   http://visionmate-cam.local/capture           JPEG кадр (640x480) — алхах горим
  *   http://visionmate-cam.local/capture?size=hi   тод кадр (1600x1200) — бичиг унших
  *   http://visionmate-cam.local/health            {"status":"ok"}
+ *   http://visionmate-cam.local:81/stream         MJPEG урсгал (640x480) — кадр бүрд хүсэлт явуулахгүй
  *   http://visionmate-cam.local/                  шалгах хуудас (кадруудыг тасралтгүй харуулна)
  *
  * Wi-Fi-ийн нэр, нууц үгийг secrets.h-д бичнэ (secrets.h.example-ийг хуулж).
@@ -24,6 +25,10 @@
 static const int FLASH_LED_PIN = 4;
 static const char *HOSTNAME = "visionmate-cam";
 static const int STALE_FRAMES = 2;  // хэмжээ солиход буферт үлдсэн хуучин кадрууд
+static const int STREAM_PORT = 81;
+// ~12 кадр/сек — Wi-Fi-г дүүргэвэл /capture, ping удааширна.
+static const int STREAM_FRAME_MS = 80;
+#define STREAM_BOUNDARY "visionmateframe"
 
 static const char INDEX_HTML[] =
     "<!doctype html><meta name=viewport content='width=device-width'>"
@@ -103,6 +108,31 @@ static esp_err_t captureHandler(httpd_req_t *req) {
   return result;
 }
 
+/** Кадруудыг нэг холболтоор тасралтгүй илгээнэ — хүсэлт бүрийн холболт, Wi-Fi-ийн саатлыг хасна. */
+static esp_err_t streamHandler(httpd_req_t *req) {
+  httpd_resp_set_type(req, "multipart/x-mixed-replace;boundary=" STREAM_BOUNDARY);
+  httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+  char header[128];
+  for (;;) {
+    int64_t started = esp_timer_get_time();
+    camera_fb_t *frame = grabFrame(FRAMESIZE_VGA);
+    if (!frame) return ESP_FAIL;
+    // Кадр авсан мөч (асаснаас хойш мс) — апп хоцролт хуримтлагдаж буйг үүгээр мэднэ.
+    long long capturedMs = frame->timestamp.tv_sec * 1000LL + frame->timestamp.tv_usec / 1000;
+    int length = snprintf(header, sizeof(header),
+                          "\r\n--" STREAM_BOUNDARY "\r\nContent-Type: image/jpeg\r\nContent-Length: %u\r\n"
+                          "X-Timestamp: %lld\r\n\r\n",
+                          frame->len, capturedMs);
+    esp_err_t result = httpd_resp_send_chunk(req, header, length);
+    if (result == ESP_OK) result = httpd_resp_send_chunk(req, (const char *)frame->buf, frame->len);
+    esp_camera_fb_return(frame);
+    // Апп холболтоо хаавал энд дуусна.
+    if (result != ESP_OK) return result;
+    int64_t waitMs = STREAM_FRAME_MS - (esp_timer_get_time() - started) / 1000;
+    if (waitMs > 0) vTaskDelay(pdMS_TO_TICKS(waitMs));
+  }
+}
+
 static esp_err_t indexHandler(httpd_req_t *req) {
   httpd_resp_set_type(req, "text/html");
   return httpd_resp_send(req, INDEX_HTML, HTTPD_RESP_USE_STRLEN);
@@ -131,6 +161,17 @@ static void startServer() {
       {"/health", HTTP_GET, healthHandler, nullptr},
   };
   for (const httpd_uri_t &route : routes) httpd_register_uri_handler(server, &route);
+
+  // Урсгал серверийн даалгаврыг эзэлдэг тул тусдаа портод — /capture, /health хариулсаар байна.
+  config.server_port = STREAM_PORT;
+  config.ctrl_port += 1;
+  httpd_handle_t streamServer = nullptr;
+  if (httpd_start(&streamServer, &config) != ESP_OK) {
+    Serial.println("Урсгалын сервер асаагүй.");
+    return;
+  }
+  const httpd_uri_t stream = {"/stream", HTTP_GET, streamHandler, nullptr};
+  httpd_register_uri_handler(streamServer, &stream);
 }
 
 static void connectWifi() {
