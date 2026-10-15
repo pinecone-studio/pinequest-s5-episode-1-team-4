@@ -1,7 +1,7 @@
 import { File, Paths } from 'expo-file-system';
 
 import { deletePhoto } from './api';
-import { latestStreamFrame, openCameraStream } from './cameraStream';
+import { latestStreamFrame, noteDistance, openCameraStream } from './cameraStream';
 import type { FrameSource } from './walkCapture';
 
 // Камер утасны hotspot-д холбогдож, mDNS нэрээр олдоно. Олдохгүй бол .env-д IP-г бичнэ.
@@ -62,6 +62,7 @@ async function requestJpeg(hiRes: boolean): Promise<Uint8Array> {
     throw new Error('Камертай холбогдож чадсангүй. Камер асаалттай эсэхийг шалгана уу.');
   });
   if (!response.ok) throw new Error('Камер зураг өгсөнгүй.');
+  noteDistance(response.headers.get('X-Distance-Cm'));
   return new Uint8Array(await response.arrayBuffer());
 }
 

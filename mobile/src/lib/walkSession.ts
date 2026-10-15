@@ -2,6 +2,8 @@ import * as Haptics from 'expo-haptics';
 
 import { AlertFilter, DANGER_WORDS, hazardPriority } from './alertFilter';
 import { deletePhoto, describeWhileWalking, detectObjects, type Hazard, type SceneAnalysis } from './api';
+import { latestDistanceCm } from './cameraStream';
+import { QUIET_BEYOND_CM, SENSOR_MAX_AGE_MS } from './obstacle';
 import { PRIORITY, PrioritySpeaker } from './prioritySpeaker';
 import { FAR, proximityLevel, pulse } from './proximity';
 import { speakDescription } from './speech';
@@ -117,7 +119,9 @@ export class WalkSession {
   /** Нэг зүйлийн сэрэмжлүүлэг; илүү чухал мессеж хэлэгдэж байвал алгасна (false). */
   alertHazard(hazard: Hazard, text: string, speak: () => Promise<void>, now: number): boolean {
     const priority = hazardPriority(hazard);
-    const spoken = this.filter.shouldAlert(hazard, now) && this.say(text, priority, speak);
+    // Машин, шат зэрэг аюулыг мэдрэгчээс үл хамааран хэлнэ.
+    const farAway = priority === PRIORITY.info && (latestDistanceCm(SENSOR_MAX_AGE_MS) ?? 0) > QUIET_BEYOND_CM;
+    const spoken = !farAway && this.filter.shouldAlert(hazard, now) && this.say(text, priority, speak);
     if (spoken) {
       this.filter.alerted(hazard, now);
       void Haptics.notificationAsync(FEEDBACK[priority]);

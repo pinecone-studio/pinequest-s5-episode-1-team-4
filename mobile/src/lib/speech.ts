@@ -8,6 +8,10 @@ const PHRASES = {
   'walk-on': require('../../assets/audio/walk-on.wav'),
   'walk-off': require('../../assets/audio/walk-off.wav'),
   'walk-error': require('../../assets/audio/walk-error.wav'),
+  'obstacle-200': require('../../assets/audio/obstacle-200.wav'),
+  'obstacle-150': require('../../assets/audio/obstacle-150.wav'),
+  'obstacle-100': require('../../assets/audio/obstacle-100.wav'),
+  'obstacle-50': require('../../assets/audio/obstacle-50.wav'),
 } as const;
 
 export type Phrase = keyof typeof PHRASES;
@@ -125,11 +129,11 @@ export async function speakDescription(text: string, audioBase64?: string | null
 }
 
 /** Аппад суулгасан дууг тоглуулна — интернэтгүй ч ажиллана. */
-export async function playAudio(source: AudioSource): Promise<void> {
+export async function playAudio(source: AudioSource, maxMs = MAX_PLAYBACK_MS): Promise<void> {
   await stopSpeaking();
   await ensureAudioMode();
   // Тогтмол мессеж тоглохгүй байсан ч үндсэн ажлыг зогсоохгүй.
-  await play(source).catch(() => undefined);
+  await play(source, maxMs).catch(() => undefined);
 }
 
 /**
@@ -144,6 +148,9 @@ export async function keepAliveInBackground(on: boolean) {
   else keepAlivePlayer.pause();
 }
 
+// Суулгасан мессежүүд 3 сек хүрэхгүй — дуусах event ирэхгүй бол 30 сек хүлээж бусад сэрэмжлүүлгийг хаахгүй.
+const PHRASE_MAX_MS = 5_000;
+
 export function playPhrase(phrase: Phrase): Promise<void> {
-  return playAudio(PHRASES[phrase]);
+  return playAudio(PHRASES[phrase], PHRASE_MAX_MS);
 }

@@ -6,25 +6,52 @@ const STALL_MS = 2_000;
 const MAX_LAG_MS = 500;
 
 let latest: { jpeg: Uint8Array; at: number } | null = null;
+let distance: { cm: number; at: number } | null = null;
+const MISS_HOLD_MS = 1_000;
+// HC-SR04-ийн доод хязгаар 2 см; нүүрийг нь халхлах, утас доргиход 2–4 см гэж худал хэмжигддэг.
+const MIN_REAL_CM = 5;
 
 /** Урсгалын хамгийн сүүлийн кадр, `maxAgeMs`-ээс хуучин бол null. */
 export function latestStreamFrame(maxAgeMs: number): Uint8Array | null {
   return latest && Date.now() - latest.at <= maxAgeMs ? latest.jpeg : null;
 }
 
-type Part = { jpeg: Uint8Array; capturedMs: number | null; rest: Uint8Array };
+/**
+ * Малгайн HC-SR04-ийн урдах зай (см), 4 м-ээс хол бол Infinity. Мэдрэгчгүй firmware эсвэл урсгал
+ * хуучирсан бол null — тэгвэл зайгаар шүүхгүй.
+ */
+export function latestDistanceCm(maxAgeMs: number): number | null {
+  return distance && Date.now() - distance.at <= maxAgeMs ? distance.cm : null;
+}
 
-/** Бүрэн JPEG (FFD8…FFD9) ба өмнөх толгой дахь X-Timestamp-ийг салгана; ESP32-ийн JPEG дотор FFD9 өөр газар гардаггүй. */
+/** Камерын X-Distance-Cm header — урсгал тасарч /capture руу шилжсэн ч зай үргэлжилнэ. */
+export function noteDistance(header: string | null) {
+  if (header === null || header === '') return;
+  const reading = Number(header);
+  if (!Number.isFinite(reading)) return;
+  const cm = reading >= 0 && reading < MIN_REAL_CM ? -1 : reading;
+  const now = Date.now();
+  // Хувцас зэрэг зөөлөн гадаргуугаас цуурай хааяа ирдэггүй — ганц алдсанаар сүүлийн зайг хаяхгүй.
+  const missed = cm < 0 && distance !== null && Number.isFinite(distance.cm) && now - distance.at < MISS_HOLD_MS;
+  if (!missed) distance = { cm: cm < 0 ? Infinity : cm, at: now };
+}
+
+type Part = { jpeg: Uint8Array; capturedMs: number | null; distanceCm: string | null; rest: Uint8Array };
+
+/** Бүрэн JPEG (FFD8…FFD9) ба өмнөх толгой дахь X-Timestamp, X-Distance-Cm-ийг салгана; ESP32-ийн JPEG дотор FFD9 өөр газар гардаггүй. */
 function takePart(buffer: Uint8Array): Part | null {
   let start = -1;
   for (let i = 0; i < buffer.length - 1; i++) {
     if (buffer[i] !== 0xff) continue;
     if (start < 0 && buffer[i + 1] === 0xd8) start = i;
     else if (start >= 0 && buffer[i + 1] === 0xd9) {
-      const stamp = /X-Timestamp: (\d+)/.exec(String.fromCharCode(...buffer.subarray(0, start)));
+      const header = String.fromCharCode(...buffer.subarray(0, start));
+      const stamp = /X-Timestamp: (\d+)/.exec(header);
+      const distance = /X-Distance-Cm: (-?\d+)/.exec(header);
       return {
         jpeg: buffer.slice(start, i + 2),
         capturedMs: stamp ? Number(stamp[1]) : null,
+        distanceCm: distance ? distance[1] : null,
         rest: buffer.slice(i + 2),
       };
     }
@@ -69,6 +96,7 @@ export function openCameraStream(url: string, onFrame: (jpeg: Uint8Array) => voi
           }
           if (lagged) break;
           latest = { jpeg: part.jpeg, at: Date.now() };
+          noteDistance(part.distanceCm);
           onFrame(part.jpeg);
         }
       }
