@@ -126,6 +126,43 @@ export function describeHazards(hazards: Hazard[], maxItems = MAX_ALERT_ITEMS): 
   return sentence.charAt(0).toUpperCase() + sentence.slice(1);
 }
 
+const NUMBER_WORDS = ['', 'нэг', 'хоёр', 'гурван', 'дөрвөн'];
+// HC-SR04 4 м хүртэл хэмждэг; 0.5 м-ийн нарийвчлал — Чимэгэ тоог үгээр уншихгүй тул үгээр бичнэ.
+const MAX_SPOKEN_CM = 425;
+// Мэдрэгчийн ~15° цацраг кадрын голыг дайрна — зайг зөвхөн тэр хэсгийг эзэлсэн зүйлд онооно,
+// эс бөгөөс хажуу дахь хүнд хананы зайг хэлнэ.
+const BEAM_LEFT = 0.45;
+const BEAM_RIGHT = 0.55;
+const coversBeam = ({ box: [x1, , x2] }: Hazard) => x1 <= BEAM_RIGHT && x2 >= BEAM_LEFT;
+// Ойртоход хэлэгдэх зайнууд — дууг нь урьдчилан бэлдэнэ.
+const PREWARM_DISTANCES_CM = [50, 100, 150, 200];
+
+/** 140 см → "нэг метр хагаст", 40 см → "хагас метрт". */
+export function distanceWords(cm: number): string {
+  const halves = Math.max(1, Math.round(cm / 50));
+  const whole = Math.floor(halves / 2);
+  if (whole === 0) return 'хагас метрт';
+  return `${NUMBER_WORDS[whole]} метр${halves % 2 ? ' хагаст' : 'т'}`;
+}
+
+/**
+ * Мэдрэгч урд талын зайг хэмждэг тул урд байгаа таньсан зүйлийг нэр, зайтай нь хэлнэ:
+ * "Урд нэг метр хагаст хүн байна." Урд юу ч таниагүй эсвэл зай мэдэгдэхгүй бол null.
+ */
+export function aheadWithDistance(hazards: Hazard[], distanceCm: number | null): { hazard: Hazard; alert: string } | null {
+  const hazard = hazards.find((h) => h.inPath && coversBeam(h));
+  if (!hazard || !distanceCm || distanceCm > MAX_SPOKEN_CM) return null;
+  return { hazard, alert: distanceAlert(hazard.name, distanceCm) };
+}
+
+const distanceAlert = (name: string, cm: number) => `Урд ${distanceWords(cm)} ${name} байна.`;
+
+/** "Урд нэг метрт хүн байна." гэх мэт — анх таарахад Чимэгэ-г хүлээлгэхгүйн тулд. Чухал нь түрүүлж. */
+export function distanceAlerts(): string[] {
+  const names = [...new Set(Object.values(HAZARDS).sort((a, b) => b.priority - a.priority).map((rule) => rule.name))];
+  return PREWARM_DISTANCES_CM.flatMap((cm) => names.map((name) => distanceAlert(name, cm)));
+}
+
 function variants(rule: Rule): [Direction, boolean][] {
   const base: [Direction, boolean][] = [['ahead', false], ['ahead', true], ['left', true], ['right', true]];
   // Тээврийн хэрэгслийг хажууд хол байсан ч хэлдэг.

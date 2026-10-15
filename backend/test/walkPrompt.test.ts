@@ -22,6 +22,14 @@ describe('walking mode prompt', () => {
     expect(calls[0].contents.at(-1)).toContain('Урд шат байна.');
   });
 
+  it('tells Gemini how far the hat sensor measured something straight ahead', async () => {
+    const { calls, analyzer: gemini } = analyzer();
+
+    await gemini.analyze(IMAGE, 'image/jpeg', { mode: 'walk', distanceCm: 120 });
+
+    expect(calls[0].contents.at(-1)).toContain('1.2 м-т');
+  });
+
   it('sends the walking-path close-up as a second image', async () => {
     const { calls, analyzer: gemini } = analyzer();
 

@@ -11,6 +11,7 @@ export type DemoEvent =
       boxes: { name: string; box: number[]; close: boolean }[];
       alert: string | null;
       ms: number;
+      distanceCm?: number | null;
     }
   | { type: 'speech'; mode: 'walk' | 'read' | 'scene' | 'voice'; text: string; image?: string };
 

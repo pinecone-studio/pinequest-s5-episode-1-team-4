@@ -20,7 +20,14 @@ export type DetectResponse = {
   alert: string | null;
   audio_base64: string | null;
   /** Зөвхөн урд замд байгаа зүйлс, чухлаас нь. */
-  hazards: { name: string; direction: 'left' | 'ahead' | 'right'; close: boolean; score: number; x: number }[];
+  hazards: {
+    name: string;
+    direction: 'left' | 'ahead' | 'right';
+    close: boolean;
+    score: number;
+    x: number;
+    distance_cm?: number | null;
+  }[];
   inference_ms: number;
 };
 

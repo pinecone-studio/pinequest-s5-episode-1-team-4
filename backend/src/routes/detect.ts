@@ -4,7 +4,7 @@ import type { AlertAudioCache } from '../alertAudio';
 import type { Settings } from '../config';
 import type { ObjectDetector } from '../detector';
 import { toBase64, type EventHub } from '../events';
-import type { Hazard } from '../hazards';
+import { aheadWithDistance, type Hazard } from '../hazards';
 import type { DetectResponse, ErrorResponse } from '../schemas';
 import { limitUploadSize, withUpload } from '../upload';
 
@@ -27,18 +27,28 @@ export function detectRoutes(settings: Settings, detector: ObjectDetector, alert
         return c.json<ErrorResponse>({ detail: 'YOLO model байхгүй. backend дотор `npm run download-model` ажиллуулна уу.' }, 503);
       }
       const result = await detector.detect(upload.image);
+      // Малгайн HC-SR04-ийн урдах зай (апп дамжуулна).
+      const distanceCm = Number(upload.fields.distance_cm) || null;
+      const measured = aheadWithDistance(result.hazards, distanceCm);
+      if (measured) result.alert = measured.alert;
       const audio = result.alert ? await alertAudio.get(result.alert) : null;
       const found = result.hazards.slice(0, 3).map((h) => `${h.label} ${Math.round(h.score * 100)}% ${h.direction}`);
       if (events.watched) {
         const boxes = result.hazards.map(({ name, box, close }) => ({ name, box, close }));
         const ms = Math.round(result.inferenceMs);
-        events.publish({ type: 'frame', image: toBase64(upload.image), boxes, alert: result.alert, ms });
+        events.publish({ type: 'frame', image: toBase64(upload.image), boxes, alert: result.alert, ms, distanceCm });
       }
-      console.log(`detect: ${Math.round(result.inferenceMs)}ms | ${found.join(', ') || 'юу ч алга'} → ${result.alert ?? '-'}`);
+      const distance = distanceCm ? ` | урд ${(distanceCm / 100).toFixed(2)} м` : '';
+      console.log(`detect: ${Math.round(result.inferenceMs)}ms${distance} | ${found.join(', ') || 'юу ч алга'} → ${result.alert ?? '-'}`);
+      // Утас мэдрэгчийн дууг хэлсэн эсэх — log-оос шалгана.
+      if (typeof upload.fields.notes === 'string' && upload.fields.notes) console.log(`  утас: ${upload.fields.notes.slice(0, 500)}`);
       return c.json<DetectResponse>({
         alert: result.alert,
         audio_base64: audio,
-        hazards: result.hazards.filter((hazard) => hazard.inPath).map(toResponse),
+        // Апп зайтай зүйлийг ойртох бүрт дахин хэлнэ.
+        hazards: result.hazards
+          .filter((hazard) => hazard.inPath)
+          .map((hazard) => ({ ...toResponse(hazard), ...(hazard === measured?.hazard && { distance_cm: distanceCm }) })),
         inference_ms: Math.round(result.inferenceMs),
       });
     }),
