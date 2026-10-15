@@ -2,7 +2,7 @@ import { serve } from '@hono/node-server';
 
 import { createApp } from './app';
 import { loadSettings } from './config';
-import { allAlerts } from './hazards';
+import { allAlerts, distanceAlerts } from './hazards';
 
 try {
   process.loadEnvFile();
@@ -21,6 +21,6 @@ serve({ fetch: app.fetch, port, hostname: '0.0.0.0' }, (info) => {
 
 // Бүх сэрэмжлүүлгийн дууг ар талд бэлдэнэ — эхний удаа ч шууд хэлэгдэнэ.
 if (settings.chimegeToken) {
-  const alerts = allAlerts();
+  const alerts = [...allAlerts(), ...distanceAlerts()];
   void app.alertAudio.prewarm(alerts).then((created) => console.log(`Сэрэмжлүүлгийн дуу: ${alerts.length} (шинээр ${created})`));
 }

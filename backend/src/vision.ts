@@ -114,12 +114,15 @@ export type AnalysisRequest = {
   previous?: string;
   /** Алхах горимд явах замын томруулсан хэсэг (JPEG). */
   pathCloseUp?: Uint8Array;
+  /** Малгайн мэдрэгчийн хэмжсэн шууд урдах зай — Gemini тэр зүйлийг нэрлэнэ. */
+  distanceCm?: number;
 };
 
-const walkPrompt = ({ previous }: AnalysisRequest) =>
-  previous?.trim()
-    ? `Өмнөх мессеж: "${previous.trim()}". Одоо хамгийн чухал зүйл юу вэ?`
-    : 'Одоо хамгийн чухал зүйл юу вэ?';
+const walkPrompt = ({ previous, distanceCm }: AnalysisRequest) => {
+  const sensor = distanceCm ? ` Мэдрэгч: зургийн яг голд, ${(distanceCm / 100).toFixed(1)} м-т юм байна.` : '';
+  const question = `Одоо хамгийн чухал зүйл юу вэ?${sensor}`;
+  return previous?.trim() ? `Өмнөх мессеж: "${previous.trim()}". ${question}` : question;
+};
 
 // Gemini-ийн хязгаарт "бодох" token ч тооцогддог; уншлагад урт текст гарна. Алхахад
 // хоцорсон хариу хэрэггүй ч Gemini 10 сек-ээс богино хугацаа хүлээн авдаггүй.

@@ -9,10 +9,11 @@ import type { Box } from '../src/yolo';
 const WAV = new TextEncoder().encode('RIFF-wav');
 const speech = { synthesize: async () => WAV };
 
-function post(detector: HazardDetector) {
+function post(detector: HazardDetector, distanceCm?: string) {
   const alertAudio = new AlertAudioCache(speech, 'voice', null);
   const form = new FormData();
   form.append('image', new File(['jpeg-bytes'], 'a.jpg', { type: 'image/jpeg' }));
+  if (distanceCm) form.append('distance_cm', distanceCm);
   return createApp({ settings: loadSettings({}), speech, detector, alertAudio }).request('/api/v1/detect', {
     method: 'POST',
     body: form,
@@ -31,6 +32,23 @@ describe('POST /api/v1/detect', () => {
       hazards: [{ name: 'хүн', direction: 'ahead', close: false, score: 0.9, x: 0.5 }],
       inference_ms: expect.any(Number),
     });
+  });
+
+  it('names the thing ahead with the distance the hat sensor measured', async () => {
+    const person = { label: 'person', score: 0.9, box: [0.4, 0.2, 0.6, 0.6] as Box };
+    const response = await post(new HazardDetector([{ detectObjects: async () => [person] }]), '145');
+
+    expect(await response.json()).toMatchObject({
+      alert: 'Урд нэг метр хагаст хүн байна.',
+      hazards: [{ name: 'хүн', distance_cm: 145 }],
+    });
+  });
+
+  it('does not give the sensor distance to something beside its beam', async () => {
+    const person = { label: 'person', score: 0.9, box: [0.3, 0.2, 0.42, 0.6] as Box };
+    const response = await post(new HazardDetector([{ detectObjects: async () => [person] }]), '145');
+
+    expect(((await response.json()) as { alert: string }).alert).toBe('Урд хүн байна.');
   });
 
   it('explains how to fix a missing model', async () => {

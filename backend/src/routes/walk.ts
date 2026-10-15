@@ -22,7 +22,8 @@ export function walkRoutes(settings: Settings, analyzer: SceneAnalyzer, speech: 
       const previous = typeof upload.fields.previous === 'string' ? upload.fields.previous.slice(0, MAX_PREVIOUS_CHARS) : undefined;
       const started = performance.now();
       const { full, path } = await walkingViews(upload, MAX_SIDE);
-      const reply = await analyzer.analyze(full.image, full.mediaType, { mode: 'walk', previous, pathCloseUp: path?.image });
+      const distanceCm = Number(upload.fields.distance_cm) || undefined;
+      const reply = await analyzer.analyze(full.image, full.mediaType, { mode: 'walk', previous, pathCloseUp: path?.image, distanceCm });
       const description = isNoChange(reply) ? null : withoutDetectorObjects(reply);
       if (description) events.publish({ type: 'speech', mode: 'walk', text: description });
       const audio = description ? await speechBase64(speech, description) : null;

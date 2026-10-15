@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { toHazards } from '../src/hazards';
+import { distanceWords, toHazards } from '../src/hazards';
 import type { Box } from '../src/yolo';
 
 const detection = (label: string, box: Box, score = 0.9) => ({ label, box, score });
@@ -40,5 +40,17 @@ describe('toHazards', () => {
   it('keeps the higher score when two detectors find the same thing', () => {
     const hazards = toHazards([detection('person', [0.4, 0.2, 0.6, 0.6], 0.6), detection('person', [0.41, 0.21, 0.61, 0.61], 0.9)]);
     expect(hazards.map((h) => h.score)).toEqual([0.9]);
+  });
+});
+
+describe('distanceWords', () => {
+  it('speaks the sensor distance in half metres', () => {
+    expect([40, 100, 140, 210, 390].map(distanceWords)).toEqual([
+      'хагас метрт',
+      'нэг метрт',
+      'нэг метр хагаст',
+      'хоёр метрт',
+      'дөрвөн метрт',
+    ]);
   });
 });
