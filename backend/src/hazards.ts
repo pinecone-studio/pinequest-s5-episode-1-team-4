@@ -27,7 +27,8 @@ const HAZARDS: Record<string, Rule> = {
   bench: { name: 'вандан сандал', priority: 6, minScore: 0.75 },
   chair: { name: 'сандал', priority: 5 },
   couch: { name: 'буйдан', priority: 5 },
-  'dining table': { name: 'ширээ', priority: 5 },
+  // OWL-ViT-ийн оноо намхан хуваарьтай; RF-DETR-ийн 0.5 босгод нөлөөлөхгүй.
+  'dining table': { name: 'ширээ', priority: 5, minScore: 0.4 },
   // Хагас нээлттэй хаалга, шатны талбайг "ор" (51–67%) гэж андуурсан.
   bed: { name: 'ор', priority: 5, minScore: 0.8 },
   'potted plant': { name: 'ваартай цэцэг', priority: 5 },

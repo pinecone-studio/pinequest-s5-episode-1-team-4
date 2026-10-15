@@ -4,6 +4,7 @@ import { AlertAudioCache } from '../src/alertAudio';
 import { createApp } from '../src/app';
 import { loadSettings } from '../src/config';
 import { HazardDetector } from '../src/detector';
+import { toDetections } from '../src/openVocab';
 import type { Box } from '../src/yolo';
 
 const WAV = new TextEncoder().encode('RIFF-wav');
@@ -73,5 +74,23 @@ describe('HazardDetector', () => {
 
     expect(result.hazards.map((h) => h.label)).toEqual(['person', 'door']);
     expect(result.alert).toBe('Урд хүн байна.');
+  });
+});
+
+describe('OWL-ViT doors', () => {
+  const box = (xmin: number) => ({ xmin, ymin: 0.1, xmax: xmin + 0.3, ymax: 0.9 });
+
+  it('drops a door that looks more like a fire extinguisher cabinet', () => {
+    const doors = toDetections([
+      { label: 'a door', score: 0.6, box: box(0.3) },
+      { label: 'a fire extinguisher cabinet', score: 0.7, box: box(0.32) },
+      { label: 'a door', score: 0.5, box: box(0.65) },
+      { label: 'a cabinet', score: 0.4, box: box(0.65) },
+    ]);
+    expect(doors.map((d) => [d.label, d.score])).toEqual([['door', 0.5]]);
+  });
+
+  it('names a desk as a table', () => {
+    expect(toDetections([{ label: 'a desk', score: 0.45, box: box(0.3) }]).map((d) => d.label)).toEqual(['dining table']);
   });
 });
