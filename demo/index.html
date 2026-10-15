@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="mn">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VisionMate Демо</title>
+<style>
+  :root {
+    --bg: #f6f4ee; --card: #ffffff; --ink: #14171c; --muted: #6b6f78; --line: #e4e1d8;
+    --accent: #ffd12e; --amber: #9e6d00; --danger: #d6402f; --ok: #2f9e5b;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body { background: var(--bg); color: var(--ink); font: 16px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; min-height: 100vh; }
+  header { display: flex; align-items: center; gap: 12px; padding: 16px 24px; }
+  header h1 { font-size: 22px; }
+  header h1 span { background: var(--accent); padding: 0 8px; border-radius: 6px; }
+  #status { margin-left: auto; font-size: 14px; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+  #status i { width: 10px; height: 10px; border-radius: 50%; background: var(--danger); display: inline-block; }
+  #status.live i { background: var(--ok); }
+  main { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 16px; padding: 0 24px 24px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 16px; }
+  #view { position: relative; aspect-ratio: 4 / 3; background: #1b1d22; border-radius: 12px; overflow: hidden; }
+  #view img, #view canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+  #view .empty { position: absolute; inset: 0; display: grid; place-items: center; color: #9aa0aa; }
+  #alert { margin-top: 12px; min-height: 44px; font-size: 26px; font-weight: 700; }
+  #alert.on { color: var(--danger); }
+  .stats { display: flex; gap: 24px; margin-top: 8px; color: var(--muted); font-size: 14px; }
+  .stats b { color: var(--ink); font-size: 18px; }
+  aside { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+  #said { font-size: 30px; font-weight: 700; min-height: 120px; }
+  .mode { display: inline-block; font-size: 13px; font-weight: 600; color: var(--amber); background: #fff6d6; border-radius: 999px; padding: 2px 10px; margin-bottom: 8px; }
+  #shot { width: 100%; border-radius: 10px; margin-top: 12px; display: none; }
+  h2 { font-size: 14px; color: var(--muted); font-weight: 600; margin-bottom: 8px; }
+  #log { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 8px; max-height: 46vh; overflow: auto; }
+  #log li { display: flex; gap: 10px; font-size: 16px; border-bottom: 1px solid var(--line); padding-bottom: 8px; }
+  #log time { color: var(--muted); font-variant-numeric: tabular-nums; flex: none; }
+  @media (max-width: 800px) {
+    header, main { padding-left: 16px; padding-right: 16px; }
+    main { grid-template-columns: 1fr; }
+    #said { font-size: 22px; min-height: 0; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1><span>VisionMate</span> шууд демо</h1>
+  <div id="status"><i></i><span>Холбогдож байна…</span></div>
+</header>
+<main>
+  <section class="card">
+    <div id="view"><div class="empty">Камерын дүрс хүлээж байна…</div><img id="frame" alt="Малгайн камерын дүрс"><canvas id="boxes"></canvas></div>
+    <div id="alert" aria-live="polite"></div>
+    <div class="stats">
+      <div>Таних хугацаа <b id="ms">–</b></div>
+      <div>Кадр/сек <b id="fps">–</b></div>
+      <div>Сэрэмжлүүлэг <b id="count">0</b></div>
+      <div>Урд саад <b id="distance">–</b></div>
+    </div>
+  </section>
+  <aside>
+    <section class="card">
+      <h2>Хэрэглэгчид хэлсэн</h2>
+      <div id="mode" class="mode" hidden></div>
+      <div id="said" aria-live="polite">—</div>
+      <img id="shot" alt="Уншсан зураг">
+    </section>
+    <section class="card">
+      <h2>Түүх</h2>
+      <ul id="log"></ul>
+    </section>
+  </aside>
+</main>
+<script>
+  // ?src=http://localhost:8000/api/v1/events — laptop backend-ийг шууд сонсох.
+  const SRC = new URLSearchParams(location.search).get('src') || 'https://visionmate-team4.fly.dev/api/v1/events';
+  const MODES = { walk: 'Алхах', read: 'Унших', scene: 'Орчин', voice: 'Дуут тушаал', alert: 'Сэрэмжлүүлэг' };
+  const $ = (id) => document.getElementById(id);
+  const frame = $('frame'), canvas = $('boxes'), ctx = canvas.getContext('2d');
+  let boxes = [], frameTimes = [], alerts = 0, lastAlert = '', lastAlertAt = 0;
+
+  function drawBoxes() {
+    const w = canvas.width = canvas.clientWidth * devicePixelRatio;
+    const h = canvas.height = canvas.clientHeight * devicePixelRatio;
+    if (!frame.naturalWidth) return;
+    // object-fit: contain — зургийн бодит талбайд буулгана.
+    const scale = Math.min(w / frame.naturalWidth, h / frame.naturalHeight);
+    const iw = frame.naturalWidth * scale, ih = frame.naturalHeight * scale, ox = (w - iw) / 2, oy = (h - ih) / 2;
+    ctx.lineWidth = 3 * devicePixelRatio;
+    ctx.font = `600 ${16 * devicePixelRatio}px system-ui, sans-serif`;
+    for (const { name, box: [x1, y1, x2, y2], close } of boxes) {
+      const color = close ? '#ff5a47' : '#ffd12e';
+      const x = ox + x1 * iw, y = oy + y1 * ih;
+      ctx.strokeStyle = color;
+      ctx.strokeRect(x, y, (x2 - x1) * iw, (y2 - y1) * ih);
+      const label = ctx.measureText(name).width + 12 * devicePixelRatio;
+      ctx.fillStyle = color;
+      ctx.fillRect(x, y - 24 * devicePixelRatio, label, 24 * devicePixelRatio);
+      ctx.fillStyle = '#14171c';
+      ctx.fillText(name, x + 6 * devicePixelRatio, y - 6 * devicePixelRatio);
+    }
+  }
+  frame.onload = drawBoxes;
+  addEventListener('resize', drawBoxes);
+
+  function log(mode, text) {
+    const li = document.createElement('li');
+    const time = document.createElement('time');
+    time.textContent = new Date().toLocaleTimeString('mn-MN', { hour12: false });
+    const span = document.createElement('span');
+    span.textContent = `${MODES[mode]}: ${text}`;
+    li.append(time, span);
+    $('log').prepend(li);
+    while ($('log').children.length > 40) $('log').lastChild.remove();
+  }
+
+  function say(mode, text, image) {
+    $('mode').hidden = false;
+    $('mode').textContent = MODES[mode];
+    $('said').textContent = text;
+    $('shot').style.display = image ? 'block' : 'none';
+    if (image) $('shot').src = `data:image/jpeg;base64,${image}`;
+    log(mode, text);
+  }
+
+  function onFrame(event) {
+    $('view').querySelector('.empty')?.remove();
+    boxes = event.boxes;
+    frame.src = `data:image/jpeg;base64,${event.image}`;
+    $('ms').textContent = `${event.ms} мс`;
+    $('distance').textContent = event.distanceCm ? `${(event.distanceCm / 100).toFixed(1)} м` : '–';
+    const now = performance.now();
+    frameTimes = [...frameTimes.filter((t) => now - t < 3000), now];
+    $('fps').textContent = (frameTimes.length / 3).toFixed(1);
+    $('alert').textContent = event.alert || '';
+    $('alert').classList.toggle('on', Boolean(event.alert));
+    // Нэг сэрэмжлүүлгийг кадр бүрт давтан бичихгүй.
+    if (event.alert && (event.alert !== lastAlert || now - lastAlertAt > 5000)) {
+      alerts += 1;
+      $('count').textContent = alerts;
+      say('alert', event.alert);
+    }
+    if (event.alert) [lastAlert, lastAlertAt] = [event.alert, now];
+  }
+
+  function connect() {
+    const source = new EventSource(SRC);
+    source.onopen = () => {
+      $('status').classList.add('live');
+      $('status').lastChild.textContent = 'Шууд';
+    };
+    source.onerror = () => {
+      $('status').classList.remove('live');
+      $('status').lastChild.textContent = 'Дахин холбогдож байна…';
+    };
+    source.onmessage = ({ data }) => {
+      const event = JSON.parse(data);
+      if (event.type === 'frame') onFrame(event);
+      else if (event.type === 'speech') say(event.mode, event.text, event.image);
+    };
+  }
+  connect();
+</script>
+</body>
+</html>
