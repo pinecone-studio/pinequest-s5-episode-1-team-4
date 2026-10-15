@@ -3,6 +3,7 @@ import { Hono } from 'hono';
 import type { AlertAudioCache } from '../alertAudio';
 import type { Settings } from '../config';
 import type { ObjectDetector } from '../detector';
+import { toBase64, type EventHub } from '../events';
 import type { Hazard } from '../hazards';
 import type { DetectResponse, ErrorResponse } from '../schemas';
 import { limitUploadSize, withUpload } from '../upload';
@@ -17,7 +18,7 @@ const toResponse = ({ name, direction, close, score, box }: Hazard) => ({
 });
 
 /** Алхах горимын шууд сэрэмжлүүлэг: YOLO ~50 мс — Gemini-ээс 10+ дахин хурдан, хязгааргүй. */
-export function detectRoutes(settings: Settings, detector: ObjectDetector, alertAudio: AlertAudioCache) {
+export function detectRoutes(settings: Settings, detector: ObjectDetector, alertAudio: AlertAudioCache, events: EventHub) {
   return new Hono().post(
     '/detect',
     limitUploadSize(settings.maxImageBytes),
@@ -28,6 +29,11 @@ export function detectRoutes(settings: Settings, detector: ObjectDetector, alert
       const result = await detector.detect(upload.image);
       const audio = result.alert ? await alertAudio.get(result.alert) : null;
       const found = result.hazards.slice(0, 3).map((h) => `${h.label} ${Math.round(h.score * 100)}% ${h.direction}`);
+      if (events.watched) {
+        const boxes = result.hazards.map(({ name, box, close }) => ({ name, box, close }));
+        const ms = Math.round(result.inferenceMs);
+        events.publish({ type: 'frame', image: toBase64(upload.image), boxes, alert: result.alert, ms });
+      }
       console.log(`detect: ${Math.round(result.inferenceMs)}ms | ${found.join(', ') || 'юу ч алга'} → ${result.alert ?? '-'}`);
       return c.json<DetectResponse>({
         alert: result.alert,

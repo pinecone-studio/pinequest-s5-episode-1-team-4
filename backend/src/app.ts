@@ -59,12 +59,12 @@ export function createApp({
   );
 
   app.get('/health', (c) => c.json<HealthResponse>({ status: 'ok' }));
-  app.route('/api/v1', analyzeRoutes(settings, analyzer, speech));
-  app.route('/api/v1', readRoutes(settings, analyzer, speech));
+  app.route('/api/v1', analyzeRoutes(settings, analyzer, speech, events));
+  app.route('/api/v1', readRoutes(settings, analyzer, speech, events));
   const walkAnalyzer = settings.walkAnalyzer === 'local' ? new LocalWalkAnalyzer(analyzer) : analyzer;
-  app.route('/api/v1', walkRoutes(settings, walkAnalyzer, speech));
-  app.route('/api/v1', detectRoutes(settings, detector, alertAudio));
-  app.route('/api/v1', navigateRoutes(settings, alertAudio));
+  app.route('/api/v1', walkRoutes(settings, walkAnalyzer, speech, events));
+  app.route('/api/v1', detectRoutes(settings, detector, alertAudio, events));
+  app.route('/api/v1', navigateRoutes(settings, alertAudio, events));
   app.route('/api/v1', eventRoutes(settings, events));
 
   // AI-ийн алдааг Монгол мессежтэй нь, бусдыг ерөнхий мессежээр буцаана.
