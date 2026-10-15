@@ -5,6 +5,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { deletePhoto } from '../lib/api';
 import { sleep, withTimeout } from '../lib/async';
+import { latestDistanceCm } from '../lib/cameraStream';
+import { ObstacleSense, SENSOR_MAX_AGE_MS } from '../lib/obstacle';
 import { PRIORITY } from '../lib/prioritySpeaker';
 import { keepAliveInBackground, playPhrase, speakDescription, stopSpeaking } from '../lib/speech';
 import type { FrameSource } from '../lib/walkCapture';
@@ -19,6 +21,8 @@ const MAX_CONSECUTIVE_FAILURES = 3;
 // Камер хариу өгөхгүй гацвал давталт чимээгүй зогсох ёсгүй — алдаа гэж тооцно.
 const CAPTURE_TIMEOUT_MS = 8_000;
 const KEEP_AWAKE_TAG = 'walking-mode';
+// Мэдрэгчийн зайг кадрын давталтаас (0.6+ сек) тусад нь, хурдан шалгана.
+const SENSOR_CHECK_MS = 100;
 
 const STOP_FEEDBACK = {
   'walk-off': Haptics.NotificationFeedbackType.Warning,
@@ -80,6 +84,15 @@ export function useWalkingMode(captureFrame: FrameSource) {
 
     const session = new WalkSession({ onSpoken: setLastDescription, isCurrent });
     sessionRef.current = session;
+    const obstacles = new ObstacleSense();
+    const sensing = setInterval(() => {
+      if (!isRunning()) return clearInterval(sensing);
+      if (suspended.current) return;
+      const now = Date.now();
+      obstacles.check(latestDistanceCm(SENSOR_MAX_AGE_MS), now, ({ phrase, text, priority }) =>
+        session.say(text, priority, () => playPhrase(phrase)),
+      );
+    }, SENSOR_CHECK_MS);
     let shown: string | undefined;
     const show = (uri: string) => {
       if (shown) deletePhoto(shown);
