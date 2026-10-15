@@ -102,8 +102,11 @@ export function readText(imageUri: string): Promise<SceneAnalysis> {
  * Алхах горимын Gemini тайлбар. Шинэ, чухал зүйл илрээгүй бол null. `previous` нь
  * өмнө хэлсэн тайлбар — model түүнийг давтахгүй.
  */
-export function describeWhileWalking(imageUri: string, previous?: string) {
-  return describeImage('/api/v1/walk', imageUri, WALK_TIMEOUT_MS, previous ? { previous } : {});
+export function describeWhileWalking(imageUri: string, previous?: string, distanceCm?: number | null) {
+  const fields: Record<string, string> = previous ? { previous } : {};
+  // Gemini мэдрэгчийн хэмжсэн зүйлийг нэрлэнэ.
+  if (distanceCm != null && Number.isFinite(distanceCm)) fields.distance_cm = String(distanceCm);
+  return describeImage('/api/v1/walk', imageUri, WALK_TIMEOUT_MS, fields);
 }
 
 export type Hazard = {
@@ -113,6 +116,8 @@ export type Hazard = {
   score: number;
   /** Зургийн өргөнд харьцуулсан төв (0–1) — нэг зүйлийг кадраас кадрт таних. */
   x: number;
+  /** Малгайн мэдрэгчийн хэмжсэн зай — урд таньсан зүйлд л ирнэ. */
+  distance_cm?: number | null;
 };
 
 export type Detection = {
@@ -126,8 +131,12 @@ export type Detection = {
 type DetectPayload = { alert: string | null; audio_base64: string | null; hazards: Hazard[] };
 
 /** Шууд илрүүлэлт (YOLO+OWL ~0.2 сек): хүн, машин, хаалга зэрэг. */
-export async function detectObjects(imageUri: string): Promise<Detection> {
-  const payload = await postForm<DetectPayload>('/api/v1/detect', imageForm(imageUri), DETECT_TIMEOUT_MS);
+export async function detectObjects(imageUri: string, distanceCm?: number | null, notes?: string): Promise<Detection> {
+  const form = imageForm(imageUri);
+  if (notes) form.append('notes', notes.slice(0, 500));
+  // Backend-ийн log, демо дэлгэцэнд мэдрэгчийн зайг харуулна.
+  if (distanceCm != null && Number.isFinite(distanceCm)) form.append('distance_cm', String(distanceCm));
+  const payload = await postForm<DetectPayload>('/api/v1/detect', form, DETECT_TIMEOUT_MS);
   return { alert: payload.alert, audioBase64: payload.audio_base64, hazards: payload.hazards };
 }
 

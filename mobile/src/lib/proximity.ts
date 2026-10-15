@@ -16,9 +16,9 @@ const PULSE_GAP_MS = 140;
 export const FAR = PROXIMITY_STEPS.length;
 
 /** 0 = 1 м-ээс ойр, 1 = 1–2 м, 2 = 2–3 м, FAR = хол. */
-export function proximityLevel({ close }: Hazard): number {
-  // Зай мэдэгдэхгүй үед хайрцгийн хэмжээгээр "ойрхон" гэснийг 1–2 м гэж үзнэ.
-  const meters = close ? 1.5 : Infinity;
+export function proximityLevel({ close, distance_cm }: Hazard): number {
+  // Мэдрэгчгүй бол хайрцгийн хэмжээгээр "ойрхон" гэснийг 1–2 м гэж үзнэ.
+  const meters = distance_cm ? distance_cm / 100 : close ? 1.5 : Infinity;
   const level = PROXIMITY_STEPS.findIndex((limit) => meters < limit);
   return level === -1 ? FAR : level;
 }
