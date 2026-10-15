@@ -46,7 +46,7 @@ describe('loadSettings', () => {
       geminiModel: 'gemini-3.5-flash',
       geminiFallbackModels: ['gemini-3.5-flash-lite', 'gemini-2.5-flash'],
       geminiWalkModel: 'gemini-3.5-flash-lite',
-      geminiWalkAlternates: ['gemini-3.5-flash'],
+      geminiWalkAlternates: [],
       chimegeVoiceId: 'FEMALE3v2',
       chimegeSpeed: 1,
       detector: 'yolox',
