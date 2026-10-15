@@ -2,13 +2,14 @@ import { Hono } from 'hono';
 
 import type { AlertAudioCache } from '../alertAudio';
 import type { Settings } from '../config';
+import type { EventHub } from '../events';
 import { extractPlace, geocode, spokenDistance, transcribe, voiceCommand, walkingRoute } from '../navigation';
 import type { ErrorResponse } from '../schemas';
 
 const MAX_AUDIO_BYTES = 2 * 1024 * 1024;
 
 /** Дуут тушаал: горимын нэр бол түүнийг, эс бөгөөс хэлсэн газар руу явган маршрутыг буцаана. */
-export function navigateRoutes(settings: Settings, alertAudio: AlertAudioCache) {
+export function navigateRoutes(settings: Settings, alertAudio: AlertAudioCache, events: EventHub) {
   return new Hono().post('/navigate', async (c) => {
     const fields = await c.req.parseBody();
     const audio = fields.audio instanceof File ? fields.audio : null;
@@ -22,6 +23,7 @@ export function navigateRoutes(settings: Settings, alertAudio: AlertAudioCache) 
     const started = performance.now();
     const text = await transcribe(settings.chimegeSttToken, new Uint8Array(await audio.arrayBuffer()));
     if (!text) return c.json({ text, found: false, confirm: await say('Сонсогдсонгүй. Товчийг дарж байгаад хэлнэ үү.') });
+    events.publish({ type: 'speech', mode: 'voice', text: `«${text}»` });
     const command = voiceCommand(text);
     if (command) {
       console.log(`voice: "${text}" → ${command}`);
@@ -34,6 +36,7 @@ export function navigateRoutes(settings: Settings, alertAudio: AlertAudioCache) 
     if (!route) return c.json({ text, place, found: false, confirm: await say(`${place || text} олдсонгүй. Дахин хэлнэ үү.`) });
 
     const distance = spokenDistance(route.distance);
+    events.publish({ type: 'speech', mode: 'voice', text: `${place} хүртэл ${distance}, ${route.maneuvers.length} эргэлт` });
     const maneuvers = await Promise.all(
       route.maneuvers.map(async (m) => ({ ...m, announce: await say(m.announce), now: await say(m.now) })),
     );

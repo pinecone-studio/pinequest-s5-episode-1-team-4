@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 
 import type { Settings } from '../config';
+import type { EventHub } from '../events';
 import { walkingViews } from '../images';
 import type { WalkResponse } from '../schemas';
 import { speechBase64, type SpeechSynthesizer } from '../speech';
@@ -13,7 +14,7 @@ const MAX_SIDE = 768;
 const MAX_PREVIOUS_CHARS = 500;
 
 /** Алхах горим: зөвхөн шинэ, чухал зүйл байвал нэг богино өгүүлбэр, үгүй бол null. */
-export function walkRoutes(settings: Settings, analyzer: SceneAnalyzer, speech: SpeechSynthesizer) {
+export function walkRoutes(settings: Settings, analyzer: SceneAnalyzer, speech: SpeechSynthesizer, events: EventHub) {
   return new Hono().post(
     '/walk',
     limitUploadSize(settings.maxImageBytes),
@@ -23,6 +24,7 @@ export function walkRoutes(settings: Settings, analyzer: SceneAnalyzer, speech: 
       const { full, path } = await walkingViews(upload, MAX_SIDE);
       const reply = await analyzer.analyze(full.image, full.mediaType, { mode: 'walk', previous, pathCloseUp: path?.image });
       const description = isNoChange(reply) ? null : withoutDetectorObjects(reply);
+      if (description) events.publish({ type: 'speech', mode: 'walk', text: description });
       const audio = description ? await speechBase64(speech, description) : null;
       console.log(`walk: ${((performance.now() - started) / 1000).toFixed(1)}s → ${description ?? '(чимээгүй)'}`);
       return c.json<WalkResponse>({ description, audio_base64: audio });
