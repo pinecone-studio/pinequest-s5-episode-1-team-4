@@ -36,7 +36,7 @@ export function loadSettings(env: Env = process.env): Settings {
     geminiModel: env.GEMINI_MODEL?.trim() || 'gemini-3.5-flash',
     geminiFallbackModels: list(env.GEMINI_FALLBACK_MODELS, 'gemini-3.5-flash-lite,gemini-2.5-flash'),
     geminiWalkModel: env.GEMINI_WALK_MODEL?.trim() || 'gemini-3.5-flash-lite',
-    geminiWalkAlternates: list(env.GEMINI_WALK_ALTERNATES, 'gemini-3.5-flash'),
+    geminiWalkAlternates: list(env.GEMINI_WALK_ALTERNATES, ''),
     chimegeToken: env.CHIMEGE_TOKEN?.trim() || undefined,
     chimegeSttToken: env.CHIMEGE_STT_TOKEN?.trim() || undefined,
     chimegeVoiceId: env.CHIMEGE_VOICE_ID?.trim() || 'FEMALE3v2',
