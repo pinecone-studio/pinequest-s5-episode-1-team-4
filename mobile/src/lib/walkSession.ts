@@ -21,6 +21,9 @@ const GEMINI_MAX_AGE_MS = 12_000;
 /** Илэрсэн зүйлсийн бүрэлдэхүүн. Чиглэлгүй — хил дээрх хэлбэлзэл Gemini-г дэмий дууддаг байсан. */
 const hazardKey = (hazards: Hazard[]) => [...new Set(hazards.map((hazard) => hazard.name))].sort().join('|');
 
+// Таньсан зүйл энэ хугацаанд урд харагдсан бол мэдрэгчийн хэмжилт тэр зүйлийнх гэж үзнэ.
+const NAMED_AHEAD_MS = 2_000;
+
 // "Ажиллаж байна" гэсэн сул чичиргээний давтамж.
 const HEARTBEAT_MS = 4_000;
 
@@ -40,6 +43,9 @@ export class WalkSession {
   private lastGeminiAt = 0;
   private geminiRunning = false;
   private lastHeartbeatAt = Date.now();
+  private namedAheadAt = 0;
+  /** Утсан дээр болсон зүйл — дараагийн кадартай хамт backend-ийн log руу явна. */
+  private notes: string[] = [];
   /** Сүүлд хэлсэн өгүүлбэр — Gemini түүнийг давтахгүй. */
   previous?: string;
 
@@ -50,11 +56,13 @@ export class WalkSession {
     const takenAt = Date.now();
     let handedOff = false;
     try {
-      const { alert, audioBase64, hazards } = await detectObjects(frame.uri);
+      const notes = this.notes.splice(0).join(' | ');
+      const { alert, audioBase64, hazards } = await detectObjects(frame.uri, latestDistanceCm(SENSOR_MAX_AGE_MS), notes);
       const top = hazards[0];
       const alerted =
         !!top && !!alert && this.alertHazard(top, alert, () => speakDescription(alert, audioBase64), Date.now());
       this.filter.seen(hazards, Date.now());
+      if (hazards.some((hazard) => hazard.direction === 'ahead')) this.namedAheadAt = Date.now();
       this.feel(hazards, alerted, Date.now());
       handedOff = this.maybeDescribe(frame, hazards, takenAt);
     } finally {
@@ -92,7 +100,7 @@ export class WalkSession {
     let photoUri: string | undefined;
     try {
       photoUri = await frame.detailUri();
-      const result = await describeWhileWalking(photoUri, this.previous);
+      const result = await describeWhileWalking(photoUri, this.previous, latestDistanceCm(SENSOR_MAX_AGE_MS));
       if (result) await this.sayDescription(result, takenAt);
     } catch {
       // Gemini ачаалалтай байсан ч YOLO-гийн сэрэмжлүүлэг үргэлжилнэ.
@@ -127,6 +135,16 @@ export class WalkSession {
       void Haptics.notificationAsync(FEEDBACK[priority]);
     }
     return spoken;
+  }
+
+  /** Ижил мессежийг дараалан давтахгүй. */
+  note(text: string) {
+    if (this.notes.at(-1) !== text) this.notes.push(text);
+  }
+
+  /** Урд таньсан зүйл байвал түүнийг нэр, зайтай нь хэлнэ — мэдрэгч "саад" гэж давхар хэлэхгүй. */
+  seesAhead(now: number): boolean {
+    return now - this.namedAheadAt <= NAMED_AHEAD_MS;
   }
 
   say(text: string, priority: number, speak: () => Promise<void>): boolean {

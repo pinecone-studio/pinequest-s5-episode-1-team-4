@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { deletePhoto } from '../lib/api';
 import { sleep, withTimeout } from '../lib/async';
 import { latestDistanceCm } from '../lib/cameraStream';
-import { ObstacleSense, SENSOR_MAX_AGE_MS } from '../lib/obstacle';
+import { ObstacleSense, SENSOR_MAX_AGE_MS, STOP_CM } from '../lib/obstacle';
 import { PRIORITY } from '../lib/prioritySpeaker';
 import { keepAliveInBackground, playPhrase, speakDescription, stopSpeaking } from '../lib/speech';
 import type { FrameSource } from '../lib/walkCapture';
@@ -89,9 +89,13 @@ export function useWalkingMode(captureFrame: FrameSource) {
       if (!isRunning()) return clearInterval(sensing);
       if (suspended.current) return;
       const now = Date.now();
-      obstacles.check(latestDistanceCm(SENSOR_MAX_AGE_MS), now, ({ phrase, text, priority }) =>
-        session.say(text, priority, () => playPhrase(phrase)),
-      );
+      // "Зогсоорой"-г үргэлж хэлнэ; бусад зайг урд таньсан зүйлийн нэртэй нь backend хэлнэ.
+      obstacles.check(latestDistanceCm(SENSOR_MAX_AGE_MS), now, ({ cm, phrase, text, priority }) => {
+        if (cm > STOP_CM && session.seesAhead(now)) return true;
+        const spoken = session.say(text, priority, () => playPhrase(phrase));
+        session.note(spoken ? `хэлэв: ${text}` : `хэлж чадсангүй (${session.speaker.current} ярьж байна): ${text}`);
+        return spoken;
+      });
     }, SENSOR_CHECK_MS);
     let shown: string | undefined;
     const show = (uri: string) => {
