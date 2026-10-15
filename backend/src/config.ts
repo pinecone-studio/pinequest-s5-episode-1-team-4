@@ -19,6 +19,10 @@ export type Settings = {
   detector: 'yolox' | 'rfdetr';
   /** Алхах горимын нэмэлт шалгалт: gemini эсвэл local (OWLv2-оор шат, API-гүй). */
   walkAnalyzer: 'gemini' | 'local';
+  /** Демо дэлгэц: laptop backend үйл явдлаа энэ хаяг руу (Fly-ийн /api/v1/events) илгээнэ. */
+  eventsRelayUrl?: string;
+  /** Үйл явдал илгээх, хүлээн авах нууц үг — laptop, Fly хоёрт ижил. */
+  eventsToken?: string;
 };
 
 type Env = Record<string, string | undefined>;
@@ -47,5 +51,7 @@ export function loadSettings(env: Env = process.env): Settings {
     chimegeSpeed: Number(env.CHIMEGE_SPEED?.trim() || 1),
     detector: env.DETECTOR?.trim() === 'rfdetr' ? 'rfdetr' : 'yolox',
     walkAnalyzer: env.WALK_ANALYZER?.trim() === 'local' ? 'local' : 'gemini',
+    eventsRelayUrl: env.EVENTS_RELAY_URL?.trim() || undefined,
+    eventsToken: env.EVENTS_TOKEN?.trim() || undefined,
   };
 }

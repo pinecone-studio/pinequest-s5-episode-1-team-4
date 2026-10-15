@@ -6,9 +6,11 @@ import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { AlertAudioCache } from './alertAudio';
 import type { Settings } from './config';
 import { HazardDetector, type ObjectDetector } from './detector';
+import { EventHub } from './events';
 import { LocalWalkAnalyzer } from './localWalk';
 import { OwlVitDetector } from './openVocab';
 import { detectRoutes } from './routes/detect';
+import { eventRoutes } from './routes/events';
 import { navigateRoutes } from './routes/navigate';
 import { analyzeRoutes } from './routes/analyze';
 import { readRoutes } from './routes/read';
@@ -25,6 +27,7 @@ type AppOptions = {
   speech?: SpeechSynthesizer;
   detector?: ObjectDetector;
   alertAudio?: AlertAudioCache;
+  events?: EventHub;
 };
 
 /** COCO илрүүлэгч (хүн, машин, тавилга) ба OWL-ViT (хаалга) зэрэг — хугацаа нь удаан нэгнийхтэй тэнцүү. */
@@ -34,12 +37,17 @@ function defaultDetector(settings: Settings) {
   return new HazardDetector([yolo, new OwlVitDetector()], yolo.available);
 }
 
+function defaultEvents({ eventsRelayUrl: url, eventsToken: token }: Settings) {
+  return new EventHub(url && token ? { url, token } : undefined);
+}
+
 export function createApp({
   settings,
   analyzer = new GeminiSceneAnalyzer(settings),
   speech = new ChimegeSynthesizer(settings),
   detector = defaultDetector(settings),
   alertAudio = new AlertAudioCache(speech, `${settings.chimegeVoiceId}:${settings.chimegeSpeed}`),
+  events = defaultEvents(settings),
 }: AppOptions) {
   const app = new Hono();
   app.use(logger());
@@ -57,6 +65,7 @@ export function createApp({
   app.route('/api/v1', walkRoutes(settings, walkAnalyzer, speech));
   app.route('/api/v1', detectRoutes(settings, detector, alertAudio));
   app.route('/api/v1', navigateRoutes(settings, alertAudio));
+  app.route('/api/v1', eventRoutes(settings, events));
 
   // AI-ийн алдааг Монгол мессежтэй нь, бусдыг ерөнхий мессежээр буцаана.
   app.onError((error, c) => {
