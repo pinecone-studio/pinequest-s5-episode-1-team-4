@@ -21,7 +21,8 @@ const TASKS: Record<Task, { label: string; busy: string; hiRes: boolean; run(uri
 };
 
 // Хараагүй хүн товч хайхгүйгээр: дэлгэцийн хаана ч 2 товшвол уншина, 3 товшвол орчноо тайлбарлана.
-const TAP_GAP_MS = 400;
+// Хараагүй хүн арай удаан товшдог — 0.4 сек байхад 3 товшилт тус бүр 1 гэж тоологдож байсан.
+const TAP_GAP_MS = 600;
 const TAP_TASKS: Record<number, Task> = { 2: 'read', 3: 'scene' };
 // Тод кадр авахын өмнө урьдчилан харах урсгал хаагдахыг хүлээнэ — эс бөгөөс кадрын хэмжээ солигдож будлина.
 const STREAM_CLOSE_MS = 300;
