@@ -6,6 +6,8 @@
  *   http://visionmate-cam.local/capture?size=hi   тод кадр (1600x1200) — бичиг унших
  *   http://visionmate-cam.local/health            {"status":"ok"}
  *   http://visionmate-cam.local:81/stream         MJPEG урсгал (640x480) — кадр бүрд хүсэлт явуулахгүй
+ *   http://visionmate-cam.local/distance          {"cm":123} — HC-SR04-ийн урдах зай (-1: 4 м-ээс хол)
+ *   Кадр бүр X-Distance-Cm header-тэй ирнэ.
  *   http://visionmate-cam.local/                  шалгах хуудас (кадруудыг тасралтгүй харуулна)
  *
  * Wi-Fi-ийн нэр, нууц үгийг secrets.h-д бичнэ (secrets.h.example-ийг хуулж).
@@ -23,6 +25,15 @@
 #include "secrets.h"
 
 static const int FLASH_LED_PIN = 4;
+// HC-SR04: Trig IO13, Echo IO12 (5V тул 1k/2k хүчдэл хуваагчаар). 2k нь IO12-ийг асах үед LOW
+// барина — IO12 асахдаа HIGH байвал флашны хүчдэл буруу сонгогдож самбар асахгүй.
+static const int TRIG_PIN = 13;
+static const int ECHO_PIN = 12;
+// 4 м-ийн цуурай ~23 мс. Түүнээс удвал урд юу ч алга.
+static const unsigned long ECHO_TIMEOUT_US = 25000;
+// Өмнөх цуурай сөнөхөд ~60 мс хэрэгтэй — эс бөгөөс хуурамч ойрын хэмжилт гардаг.
+static const uint32_t DISTANCE_INTERVAL_MS = 70;
+static volatile int distanceCm = -1;
 static const char *HOSTNAME = "visionmate-cam";
 static const int STALE_FRAMES = 2;  // хэмжээ солиход буферт үлдсэн хуучин кадрууд
 static const int STREAM_PORT = 81;
@@ -38,6 +49,27 @@ static const char INDEX_HTML[] =
     "const next=()=>{f.src='/capture?t='+Date.now()};"
     "f.onload=f.onerror=()=>setTimeout(next,150);next();"
     "</script>";
+
+/** Нэг хэмжилт, см. Цуурай ирээгүй бол -1. */
+static int measureDistanceCm() {
+  digitalWrite(TRIG_PIN, LOW);
+  delayMicroseconds(2);
+  digitalWrite(TRIG_PIN, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(TRIG_PIN, LOW);
+  unsigned long echoUs = pulseIn(ECHO_PIN, HIGH, ECHO_TIMEOUT_US);
+  return echoUs ? echoUs / 58 : -1;
+}
+
+/** Сүүлийн 3 хэмжилтийн медиан — ганц хуурамч цуурай "Зогсоорой" гэж хэлүүлэхгүй. */
+static void updateDistance() {
+  static int last[3] = {-1, -1, -1};
+  static int next = 0;
+  last[next] = measureDistanceCm();
+  next = (next + 1) % 3;
+  int a = last[0], b = last[1], c = last[2];
+  distanceCm = max(min(a, b), min(max(a, b), c));
+}
 
 /** AI Thinker ESP32-CAM-ын камерын хөлүүд. */
 static camera_config_t cameraConfig() {
@@ -103,6 +135,9 @@ static esp_err_t captureHandler(httpd_req_t *req) {
   }
   httpd_resp_set_type(req, "image/jpeg");
   httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+  char distance[8];
+  snprintf(distance, sizeof(distance), "%d", distanceCm);
+  httpd_resp_set_hdr(req, "X-Distance-Cm", distance);
   esp_err_t result = httpd_resp_send(req, (const char *)frame->buf, frame->len);
   esp_camera_fb_return(frame);
   return result;
@@ -121,8 +156,8 @@ static esp_err_t streamHandler(httpd_req_t *req) {
     long long capturedMs = frame->timestamp.tv_sec * 1000LL + frame->timestamp.tv_usec / 1000;
     int length = snprintf(header, sizeof(header),
                           "\r\n--" STREAM_BOUNDARY "\r\nContent-Type: image/jpeg\r\nContent-Length: %u\r\n"
-                          "X-Timestamp: %lld\r\n\r\n",
-                          frame->len, capturedMs);
+                          "X-Timestamp: %lld\r\nX-Distance-Cm: %d\r\n\r\n",
+                          frame->len, capturedMs, (int)distanceCm);
     esp_err_t result = httpd_resp_send_chunk(req, header, length);
     if (result == ESP_OK) result = httpd_resp_send_chunk(req, (const char *)frame->buf, frame->len);
     esp_camera_fb_return(frame);
@@ -143,6 +178,14 @@ static esp_err_t healthHandler(httpd_req_t *req) {
   return httpd_resp_send(req, "{\"status\":\"ok\"}", HTTPD_RESP_USE_STRLEN);
 }
 
+static esp_err_t distanceHandler(httpd_req_t *req) {
+  char body[24];
+  snprintf(body, sizeof(body), "{\"cm\":%d}", distanceCm);
+  httpd_resp_set_type(req, "application/json");
+  httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+  return httpd_resp_send(req, body, HTTPD_RESP_USE_STRLEN);
+}
+
 static void startServer() {
   httpd_config_t config = HTTPD_DEFAULT_CONFIG();
   // iPhone холболтоо нээлттэй үлдээдэг — сокет дүүрвэл шинэ хүсэлт хариугүй өлгөөтэй үлдэнэ.
@@ -159,6 +202,7 @@ static void startServer() {
       {"/", HTTP_GET, indexHandler, nullptr},
       {"/capture", HTTP_GET, captureHandler, nullptr},
       {"/health", HTTP_GET, healthHandler, nullptr},
+      {"/distance", HTTP_GET, distanceHandler, nullptr},
   };
   for (const httpd_uri_t &route : routes) httpd_register_uri_handler(server, &route);
 
@@ -192,6 +236,9 @@ void setup() {
   Serial.begin(115200);
   pinMode(FLASH_LED_PIN, OUTPUT);
   digitalWrite(FLASH_LED_PIN, LOW);
+  pinMode(TRIG_PIN, OUTPUT);
+  digitalWrite(TRIG_PIN, LOW);
+  pinMode(ECHO_PIN, INPUT);
 
   camera_config_t config = cameraConfig();
   esp_err_t error = esp_camera_init(&config);
@@ -225,7 +272,12 @@ void setup() {
 
 void loop() {
   static uint32_t lastWifiCheck = 0;
+  static uint32_t lastDistance = 0;
   ArduinoOTA.handle();
+  if (millis() - lastDistance >= DISTANCE_INTERVAL_MS) {
+    lastDistance = millis();
+    updateDistance();
+  }
   // Hotspot түр унтарвал дахин холбогдоно.
   if (millis() - lastWifiCheck > 5000) {
     lastWifiCheck = millis();
