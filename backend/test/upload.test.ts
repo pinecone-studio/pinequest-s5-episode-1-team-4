@@ -47,11 +47,16 @@ describe('loadSettings', () => {
       geminiFallbackModels: ['gemini-3.5-flash-lite', 'gemini-2.5-flash'],
       geminiWalkModel: 'gemini-3.5-flash-lite',
       geminiWalkAlternates: [],
+      geminiApiKeys: [],
       chimegeVoiceId: 'FEMALE3v2',
       chimegeSpeed: 1,
       detector: 'yolox',
       walkAnalyzer: 'gemini',
     });
+  });
+
+  it('reads several Gemini keys from either variable', () => {
+    expect(loadSettings({ GEMINI_API_KEY: 'a, b', GEMINI_API_KEYS: 'c' })).toMatchObject({ geminiApiKey: 'a', geminiApiKeys: ['b', 'c'] });
   });
 
   it('reads comma-separated origins', () => {

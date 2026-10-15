@@ -174,7 +174,9 @@ function errorKind(error: unknown): string {
 // Үнэгүй түвшинд ачаалал (503), хязгаар (429), удаашрал түгээмэл бөгөөд хязгаар нь
 // model тус бүрд тусдаа тул эдгээр үед дараагийн model-ийг оролдоно.
 const RETRYABLE = new Set(['timeout', '429', '503']);
-// 429 өгсөн model-ийг дахин асуух нь хүсэлт бүрт хугацаа алдана.
+// Буруу хуулсан эсвэл устгасан key — model солих нь тус болохгүй, зөвхөн өөр key-ээр оролдоно.
+const BAD_KEY = new Set(['400', '401', '403']);
+// 429 өгсөн key+model-ийг дахин асуух нь хүсэлт бүрт хугацаа алдана.
 const RATE_LIMIT_COOLDOWN_MS = 60_000;
 
 const KNOWN_ERRORS: Record<string, string> = {
@@ -193,39 +195,75 @@ type GeminiClientFactory = (apiKey: string) => Pick<GoogleGenAI, 'models'>;
 type Contents = Parameters<GoogleGenAI['models']['generateContent']>[0]['contents'];
 
 export class GeminiSceneAnalyzer implements SceneAnalyzer {
+  /** "key-ийн дугаар:model" → хязгаар дуусах хугацаа. */
   private readonly rateLimitedUntil = new Map<string, number>();
+  private readonly clients = new Map<string, Pick<GoogleGenAI, 'models'>>();
+  private readonly badKeyUntil = new Map<string, number>();
   private walkTurn = 0;
 
   constructor(
     private readonly settings: Pick<
       Settings,
-      'geminiApiKey' | 'geminiModel' | 'geminiFallbackModels' | 'geminiWalkModel' | 'geminiWalkAlternates'
+      'geminiApiKey' | 'geminiApiKeys' | 'geminiModel' | 'geminiFallbackModels' | 'geminiWalkModel' | 'geminiWalkAlternates'
     >,
     private readonly createClient: GeminiClientFactory = (apiKey) => new GoogleGenAI({ apiKey }),
     private readonly now: () => number = Date.now,
   ) {}
 
   async analyze(image: Uint8Array, mediaType: string, request: AnalysisRequest = { mode: 'scene' }): Promise<string> {
-    const client = this.client();
+    const keys = this.keys();
     const prompt = PROMPTS[request.mode];
     const closeUp = request.pathCloseUp ? [PATH_CLOSE_UP_LABEL, inline(request.pathCloseUp, 'image/jpeg')] : [];
     const contents = [inline(image, mediaType), ...closeUp, prompt.userPrompt(request)];
     let lastError: unknown;
-    for (const model of this.modelsToTry(request.mode)) {
+    // Ачаалалтай (503, timeout) model-ийг өөр key-ээр асуух нь дахин хүлээлгэнэ — дараагийн model руу.
+    let overloaded: string | undefined;
+    const badKeys = new Set<string>();
+    for (const { model, key, id } of this.attempts(request.mode, keys)) {
+      if (model === overloaded || badKeys.has(key)) continue;
       try {
-        return await this.generate(client, model, contents, prompt);
+        return await this.generate(this.client(key), model, contents, prompt);
       } catch (error) {
         lastError = error;
-        if (!this.shouldTryNext(model, error)) break;
+        const kind = errorKind(error);
+        console.warn(`Gemini ${model} (key ${id.split(':')[0]}): ${kind}`);
+        if (kind === '429') {
+          this.rateLimitedUntil.set(id, this.now() + RATE_LIMIT_COOLDOWN_MS);
+          continue;
+        }
+        if (BAD_KEY.has(kind)) {
+          badKeys.add(key);
+          this.badKeyUntil.set(key, this.now() + RATE_LIMIT_COOLDOWN_MS);
+          continue;
+        }
+        if (!RETRYABLE.has(kind)) break;
+        overloaded = model;
       }
     }
     throw toAnalysisError(lastError);
   }
 
-  private client() {
-    const { geminiApiKey } = this.settings;
-    if (!geminiApiKey) throw new SceneAnalysisError(503, 'GEMINI_API_KEY тохируулаагүй байна.');
-    return this.createClient(geminiApiKey);
+  private keys(): string[] {
+    const { geminiApiKey, geminiApiKeys = [] } = this.settings;
+    const keys = [...new Set([geminiApiKey, ...geminiApiKeys].filter((key): key is string => Boolean(key)))];
+    if (keys.length === 0) throw new SceneAnalysisError(503, 'GEMINI_API_KEY тохируулаагүй байна.');
+    return keys;
+  }
+
+  private client(key: string) {
+    let client = this.clients.get(key);
+    if (!client) this.clients.set(key, (client = this.createClient(key)));
+    return client;
+  }
+
+  /** Model бүрийг key бүрээр (сайн model-ийг эхэлж) — хязгаарт орсон хосыг алгасна. */
+  private attempts(mode: AnalysisMode, keys: string[]) {
+    const all = this.modelsToTry(mode).flatMap((model) => keys.map((key, i) => ({ model, key, id: `${i + 1}:${model}` })));
+    const ready = all.filter(
+      ({ id, key }) => Math.max(this.rateLimitedUntil.get(id) ?? 0, this.badKeyUntil.get(key) ?? 0) <= this.now(),
+    );
+    // Бүгд хязгаарт орсон бол аль нэг нь шинэчлэгдсэн байж магадгүй.
+    return ready.length > 0 ? ready : all;
   }
 
   /** Үндсэн model, дараа нь нөөц model-ууд — хязгаарт орсныг алгасна. */
@@ -234,10 +272,7 @@ export class GeminiSceneAnalyzer implements SceneAnalyzer {
     // Алхахад хурд чухал тул хөнгөн model-уудыг ээлжилнэ — үнэгүй хязгаар нь model тус бүрд тусдаа.
     const walkModels = [geminiWalkModel, ...geminiWalkAlternates];
     const walkFirst = mode === 'walk' ? [walkModels[this.walkTurn++ % walkModels.length], ...walkModels] : [];
-    const chain = [...new Set([...walkFirst, geminiModel, ...geminiFallbackModels])];
-    const ready = chain.filter((model) => (this.rateLimitedUntil.get(model) ?? 0) <= this.now());
-    // Бүгд хязгаарт орсон бол аль нэг нь шинэчлэгдсэн байж магадгүй.
-    return ready.length > 0 ? ready : chain;
+    return [...new Set([...walkFirst, geminiModel, ...geminiFallbackModels])];
   }
 
   private async generate(
@@ -258,12 +293,5 @@ export class GeminiSceneAnalyzer implements SceneAnalyzer {
       },
     });
     return requireDescription(response.text);
-  }
-
-  private shouldTryNext(model: string, error: unknown): boolean {
-    const kind = errorKind(error);
-    if (kind === '429') this.rateLimitedUntil.set(model, this.now() + RATE_LIMIT_COOLDOWN_MS);
-    console.warn(`Gemini ${model}: ${kind}`);
-    return RETRYABLE.has(kind);
   }
 }

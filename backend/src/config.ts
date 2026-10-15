@@ -2,6 +2,8 @@ export type Settings = {
   allowedOrigins: string[];
   maxImageBytes: number;
   geminiApiKey?: string;
+  /** Нөөц key-үүд — үнэгүй хязгаар key (project) тус бүрд тусдаа тул 429 өгвөл дараагийнх руу шилжинэ. */
+  geminiApiKeys?: string[];
   geminiModel: string;
   /** Үндсэн model ачаалалтай үед дарааллаар нь оролдох model-ууд. */
   geminiFallbackModels: string[];
@@ -32,7 +34,9 @@ export function loadSettings(env: Env = process.env): Settings {
   return {
     allowedOrigins: list(env.ALLOWED_ORIGINS, '*'),
     maxImageBytes: Number(env.MAX_IMAGE_BYTES?.trim() || 10 * 1024 * 1024),
-    geminiApiKey: env.GEMINI_API_KEY?.trim() || undefined,
+    // GEMINI_API_KEY-д ч таслалаар хэд хэдэн key бичиж болно.
+    geminiApiKey: list(env.GEMINI_API_KEY, '')[0],
+    geminiApiKeys: [...list(env.GEMINI_API_KEY, '').slice(1), ...list(env.GEMINI_API_KEYS, '')],
     geminiModel: env.GEMINI_MODEL?.trim() || 'gemini-3.5-flash',
     geminiFallbackModels: list(env.GEMINI_FALLBACK_MODELS, 'gemini-3.5-flash-lite,gemini-2.5-flash'),
     geminiWalkModel: env.GEMINI_WALK_MODEL?.trim() || 'gemini-3.5-flash-lite',
